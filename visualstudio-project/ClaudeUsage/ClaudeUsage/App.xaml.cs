@@ -43,10 +43,10 @@ public partial class App : System.Windows.Application
             _mainWindow.HideWithAnimation();
         };
 
-        // Set up auto-refresh timer (2 minutes)
+        // Set up auto-refresh timer (5 minutes)
         _refreshTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMinutes(2)
+            Interval = TimeSpan.FromMinutes(5)
         };
         _refreshTimer.Tick += async (s, args) => await RefreshUsageData();
         _refreshTimer.Start();
@@ -341,7 +341,7 @@ public partial class App : System.Windows.Application
         var sessionReset = usage.FiveHour?.TimeUntilReset ?? "N/A";
         var weeklyReset = usage.SevenDay?.TimeUntilReset ?? "N/A";
 
-        _notifyIcon.Text = $"Claude Usage\nSession: {sessionPct}% (resets in {sessionReset})\nWeekly: {weeklyPct}% (resets in {weeklyReset})";
+        _notifyIcon!.Text = $"Claude Usage\nSession: {sessionPct}% (resets in {sessionReset})\nWeekly: {weeklyPct}% (resets in {weeklyReset})";
 
         // Update popup if visible
         if (_mainWindow?.IsVisible == true)

@@ -12,6 +12,7 @@ public partial class MainWindow : FluentWindow
     private static readonly SolidColorBrush GreenBrush = new(System.Windows.Media.Color.FromRgb(34, 197, 94));
     private static readonly SolidColorBrush YellowBrush = new(System.Windows.Media.Color.FromRgb(234, 179, 8));
     private static readonly SolidColorBrush RedBrush = new(System.Windows.Media.Color.FromRgb(239, 68, 68));
+    private static readonly SolidColorBrush BlueBrush = new(System.Windows.Media.Color.FromRgb(59, 130, 246));
 
     private double _targetTop;
 
@@ -73,10 +74,16 @@ public partial class MainWindow : FluentWindow
         {
             SessionPercentText.Text = "--%";
             WeeklyPercentText.Text = "--%";
+            SonnetPercentText.Text = "--%";
+            OverageAmountText.Text = "$--";
+            OverageLimitText.Text = "";
             SessionProgressBar.Value = 0;
             WeeklyProgressBar.Value = 0;
+            SonnetProgressBar.Value = 0;
+            OverageProgressBar.Value = 0;
             SessionResetText.Text = "Resets in --";
             WeeklyResetText.Text = "Resets in --";
+            SonnetResetText.Text = "Resets in --";
             LastUpdatedText.Text = "No data";
             return;
         }
@@ -94,6 +101,31 @@ public partial class MainWindow : FluentWindow
         WeeklyProgressBar.Value = weeklyPct;
         WeeklyResetText.Text = $"Resets in {data.SevenDay?.TimeUntilReset ?? "--"}";
         WeeklyPercentText.Foreground = GetColorForPercent(weeklyPct);
+
+        // Sonnet Only data (seven_day_sonnet with sonnet_only fallback)
+        var sonnet = data.Sonnet;
+        var sonnetPct = sonnet?.UtilizationPercent ?? 0;
+        SonnetPercentText.Text = $"{sonnetPct}%";
+        SonnetProgressBar.Value = sonnetPct;
+        SonnetResetText.Text = $"Resets in {sonnet?.TimeUntilReset ?? "--"}";
+        SonnetPercentText.Foreground = GetColorForPercent(sonnetPct);
+
+        // Extra usage / overage data
+        var extra = data.ExtraUsage;
+        if (extra is { IsEnabled: true })
+        {
+            OverageAmountText.Text = $"${extra.UsedDollars:F2}";
+            OverageLimitText.Text = $"of ${extra.LimitDollars:F0} limit";
+            OverageProgressBar.Value = extra.UtilizationPercent;
+            OverageAmountText.Foreground = extra.UsedCredits > 0 ? RedBrush : BlueBrush;
+        }
+        else
+        {
+            OverageAmountText.Text = "$0.00";
+            OverageLimitText.Text = "";
+            OverageProgressBar.Value = 0;
+            OverageAmountText.Foreground = BlueBrush;
+        }
 
         // Last updated
         var secondsAgo = (int)(DateTime.Now - lastUpdated).TotalSeconds;

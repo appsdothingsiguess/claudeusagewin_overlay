@@ -10,8 +10,19 @@ public class UsageData
     [JsonPropertyName("seven_day")]
     public UsageWindow? SevenDay { get; set; }
 
+    [JsonPropertyName("seven_day_sonnet")]
+    public UsageWindow? SevenDaySonnet { get; set; }
+
     [JsonPropertyName("sonnet_only")]
     public UsageWindow? SonnetOnly { get; set; }
+
+    [JsonPropertyName("extra_usage")]
+    public ExtraUsageData? ExtraUsage { get; set; }
+
+    /// <summary>
+    /// Returns sonnet data from seven_day_sonnet (primary) or sonnet_only (fallback).
+    /// </summary>
+    public UsageWindow? Sonnet => SevenDaySonnet ?? SonnetOnly;
 }
 
 public class UsageWindow
@@ -41,6 +52,22 @@ public class UsageWindow
             return $"{remaining.Minutes}m";
         }
     }
+}
+
+public class ExtraUsageData
+{
+    [JsonPropertyName("is_enabled")]
+    public bool IsEnabled { get; set; }
+
+    [JsonPropertyName("monthly_limit")]
+    public double MonthlyLimit { get; set; }
+
+    [JsonPropertyName("used_credits")]
+    public double UsedCredits { get; set; }
+
+    public double LimitDollars => MonthlyLimit / 100.0;
+    public double UsedDollars => UsedCredits / 100.0;
+    public int UtilizationPercent => MonthlyLimit > 0 ? (int)(UsedCredits / MonthlyLimit * 100) : 0;
 }
 
 public class CredentialsFile
