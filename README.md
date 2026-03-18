@@ -82,7 +82,7 @@ dotnet publish -c Release -r win-x64 --self-contained false /p:PublishSingleFile
 
 - **C# / .NET 8** — native Windows performance, no interpreted runtime
 - **WPF** with [WPF-UI](https://github.com/lepoco/wpfui) — Fluent Design System (Mica, dark/light theme)
-- **[SkiaSharp](https://github.com/mono/SkiaSharp)** — hardware-accelerated gauge rendering
+- **WPF DrawingContext** — native hardware-accelerated gauge rendering (no SkiaSharp, zero extra native DLLs)
 - **[Svg.NET](https://github.com/svg-net/SVG)** — dynamic tray icon rendering
 - System.Windows.Forms.NotifyIcon — system tray integration
 

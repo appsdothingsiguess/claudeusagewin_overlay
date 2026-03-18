@@ -1,41 +1,42 @@
+using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
-using SkiaSharp;
-using SkiaSharp.Views.Desktop;
-using SkiaSharp.Views.WPF;
+using Brushes = System.Windows.Media.Brushes;
+using Color = System.Windows.Media.Color;
+using FlowDirection = System.Windows.FlowDirection;
+using FontFamily = System.Windows.Media.FontFamily;
+using Pen = System.Windows.Media.Pen;
+using Point = System.Windows.Point;
+using Size = System.Windows.Size;
 
 namespace ClaudeUsage.Controls;
 
-public class UsageGauge : System.Windows.Controls.UserControl
+public class UsageGauge : FrameworkElement
 {
-    // 270° arc with wider bottom gap (looks better)
-    // Labels at 20/80 are placed on a horizontal line for aesthetics
-    private const float StartAngle = 135f;
-    private const float SweepAngle = 270f;
-
-    // Gradient colors defined in GetGradientForValue()
+    private const double StartAngle = 135.0;
+    private const double SweepAngle = 270.0;
 
     #region Dependency Properties
 
     public static readonly DependencyProperty ValueProperty =
         DependencyProperty.Register(nameof(Value), typeof(double), typeof(UsageGauge),
-            new PropertyMetadata(0.0, OnRedraw));
+            new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty TimeElapsedPercentProperty =
         DependencyProperty.Register(nameof(TimeElapsedPercent), typeof(double?), typeof(UsageGauge),
-            new PropertyMetadata(null, OnRedraw));
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty LabelProperty =
         DependencyProperty.Register(nameof(Label), typeof(string), typeof(UsageGauge),
-            new PropertyMetadata("", OnRedraw));
+            new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty ResetTextProperty =
         DependencyProperty.Register(nameof(ResetText), typeof(string), typeof(UsageGauge),
-            new PropertyMetadata("", OnRedraw));
+            new FrameworkPropertyMetadata("", FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty IsDarkThemeProperty =
         DependencyProperty.Register(nameof(IsDarkTheme), typeof(bool), typeof(UsageGauge),
-            new PropertyMetadata(true, OnRedraw));
+            new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public double Value { get => (double)GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
     public double? TimeElapsedPercent { get => (double?)GetValue(TimeElapsedPercentProperty); set => SetValue(TimeElapsedPercentProperty, value); }
@@ -45,322 +46,262 @@ public class UsageGauge : System.Windows.Controls.UserControl
 
     #endregion
 
-    private readonly SKElement _skElement;
+    private static readonly FontFamily SegoeUI = new("Segoe UI");
+    private static readonly Typeface BoldTypeface = new(SegoeUI, FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+    private static readonly Typeface SemiBoldTypeface = new(SegoeUI, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+    private static readonly Typeface NormalTypeface = new(SegoeUI, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
 
-    public UsageGauge()
+    protected override void OnRender(DrawingContext dc)
     {
-        _skElement = new SKElement();
-        _skElement.PaintSurface += OnPaintSurface;
-        Content = _skElement;
-    }
-
-    private static void OnRedraw(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        if (d is UsageGauge g) g._skElement.InvalidateVisual();
-    }
-
-    private float GetDpiScale()
-    {
-        var source = PresentationSource.FromVisual(this);
-        return (float)(source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0);
-    }
-
-    private void OnPaintSurface(object? sender, SKPaintSurfaceEventArgs e)
-    {
-        var canvas = e.Surface.Canvas;
-        var info = e.Info;
-        canvas.Clear(SKColors.Transparent);
+        base.OnRender(dc);
 
         var dark = IsDarkTheme;
         var value = Math.Clamp(Value, 0, 100);
-        var dpi = GetDpiScale();
 
-        var w = (float)info.Width;
-        var h = (float)info.Height;
-        var cx = w / 2f;
+        var w = ActualWidth;
+        var h = ActualHeight;
+        if (w <= 0 || h <= 0) return;
 
-        // --- Layout ---
-        var labelFontSize = 13f * dpi;
-        var labelAreaH = labelFontSize + 16f * dpi;      // Label + bigger padding
-        var bottomTextH = 36f * dpi;                      // Space for value + reset text
+        var cx = w / 2;
+        var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
-        // Gauge must fit between label and bottom text
+        // Layout
+        var labelFontSize = 13.0;
+        var labelAreaH = labelFontSize + 16;
+        var bottomTextH = 36.0;
+
         var availableH = h - labelAreaH - bottomTextH;
-        var maxRadiusFromH = (availableH) / 2.0f;
-        var maxRadiusFromW = w * 0.40f;
-        var radius = MathF.Min(maxRadiusFromH, maxRadiusFromW);
-        var arcThick = radius * 0.26f;
-        var tickGap = 8f;
+        var maxRadiusFromH = availableH / 2.0;
+        var maxRadiusFromW = w * 0.40;
+        var radius = Math.Min(maxRadiusFromH, maxRadiusFromW);
+        var arcThick = radius * 0.26;
+        var tickGap = 8.0;
 
-        var cy = labelAreaH + radius + arcThick / 2f;
+        var cy = labelAreaH + radius + arcThick / 2;
 
-        // Percentage sits inside the arc opening (bottom gap)
-        var valueTextY = cy + radius * 0.7f;
-        var resetTextY = valueTextY + 14f * dpi;
+        var valueTextY = cy + radius * 0.7;
+        var resetTextY = valueTextY + 16;
 
-        // --- Draw ---
-        DrawLabel(canvas, cx, labelFontSize, dark, labelFontSize);
-        DrawBackgroundArc(canvas, cx, cy, radius, arcThick, dark);
-        DrawTickRing(canvas, cx, cy, radius, arcThick, tickGap, dark);
-        DrawFillArc(canvas, cx, cy, radius, arcThick, value);
+        // Draw
+        DrawLabel(dc, cx, labelFontSize, dark, labelFontSize, dpi);
+        DrawBackgroundArc(dc, cx, cy, radius, arcThick, dark);
+        DrawTickRing(dc, cx, cy, radius, arcThick, tickGap, dark);
+        DrawFillArc(dc, cx, cy, radius, arcThick, value);
 
         if (TimeElapsedPercent.HasValue)
-            DrawTimeMarker(canvas, cx, cy, radius, arcThick, TimeElapsedPercent.Value);
+            DrawTimeMarker(dc, cx, cy, radius, arcThick, TimeElapsedPercent.Value);
 
-        DrawNeedle(canvas, cx, cy, radius, arcThick, tickGap, value, dark);
-        DrawScaleLabels(canvas, cx, cy, radius, arcThick, dark, dpi);
-        DrawValueText(canvas, cx, valueTextY, value, dark, dpi);
-        DrawResetText(canvas, cx, resetTextY, dark, dpi);
+        DrawNeedle(dc, cx, cy, radius, arcThick, tickGap, value, dark);
+        DrawScaleLabels(dc, cx, cy, radius, arcThick, dark, dpi);
+        DrawValueText(dc, cx, valueTextY, value, dark, dpi);
+        DrawResetText(dc, cx, resetTextY, dark, dpi);
     }
 
-    private static void DrawTextNew(SKCanvas canvas, string text, float x, float y, SKTextAlign align, SKFont font, SKPaint paint)
+    // --- Helper: angle to point on circle ---
+    private static Point AngleToPoint(double cx, double cy, double radius, double angleDeg)
     {
-        canvas.DrawText(text, x, y, align, font, paint);
+        var rad = angleDeg * Math.PI / 180.0;
+        return new Point(cx + Math.Cos(rad) * radius, cy + Math.Sin(rad) * radius);
     }
 
-    private void DrawLabel(SKCanvas canvas, float cx, float y, bool dark, float fontSize)
+    // --- Helper: draw an arc stroke ---
+    private static void DrawArcStroke(DrawingContext dc, Pen pen, double cx, double cy, double r, double startAngle, double sweepAngle)
+    {
+        if (sweepAngle <= 0) return;
+
+        var start = AngleToPoint(cx, cy, r, startAngle);
+        var end = AngleToPoint(cx, cy, r, startAngle + sweepAngle);
+        var size = new Size(r, r);
+        var isLargeArc = sweepAngle > 180;
+
+        var fig = new PathFigure { StartPoint = start, IsClosed = false };
+        fig.Segments.Add(new ArcSegment(end, size, 0, isLargeArc, SweepDirection.Clockwise, true));
+
+        var geom = new PathGeometry();
+        geom.Figures.Add(fig);
+        dc.DrawGeometry(null, pen, geom);
+    }
+
+    // --- Drawing methods ---
+
+    private void DrawLabel(DrawingContext dc, double cx, double y, bool dark, double fontSize, double dpi)
     {
         if (string.IsNullOrEmpty(Label)) return;
-        using var font = new SKFont(SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold), fontSize);
-        using var paint = new SKPaint { Color = dark ? new SKColor(210, 210, 210) : new SKColor(50, 50, 50), IsAntialias = true };
-        DrawTextNew(canvas, Label, cx, y, SKTextAlign.Center, font, paint);
+        var brush = dark ? new SolidColorBrush(Color.FromRgb(210, 210, 210)) : new SolidColorBrush(Color.FromRgb(50, 50, 50));
+        var ft = new FormattedText(Label, CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, BoldTypeface, fontSize, brush, dpi);
+        dc.DrawText(ft, new Point(cx - ft.Width / 2, y - ft.Height / 2));
     }
 
-    private static void DrawBackgroundArc(SKCanvas canvas, float cx, float cy, float r, float thick, bool dark)
+    private static void DrawBackgroundArc(DrawingContext dc, double cx, double cy, double r, double thick, bool dark)
     {
-        using var paint = new SKPaint
-        {
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = thick,
-            StrokeCap = SKStrokeCap.Round,
-            Color = dark ? new SKColor(55, 55, 55) : new SKColor(225, 225, 225),
-            IsAntialias = true
-        };
-        var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
-        canvas.DrawArc(rect, StartAngle, SweepAngle, false, paint);
+        var color = dark ? Color.FromRgb(55, 55, 55) : Color.FromRgb(225, 225, 225);
+        var pen = new Pen(new SolidColorBrush(color), thick) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        DrawArcStroke(dc, pen, cx, cy, r, StartAngle, SweepAngle);
     }
 
-    private static void DrawFillArc(SKCanvas canvas, float cx, float cy, float r, float thick, double value)
+    private static void DrawFillArc(DrawingContext dc, double cx, double cy, double r, double thick, double value)
     {
         if (value <= 0) return;
 
         var (startColor, endColor) = GetGradientForValue(value);
-        var sweep = (float)(SweepAngle * value / 100.0);
+        var sweep = SweepAngle * value / 100.0;
 
-        // Linear gradient from arc start point to arc fill end point
-        var startRad = StartAngle * MathF.PI / 180f;
-        var endRad = (StartAngle + sweep) * MathF.PI / 180f;
+        var startRad = StartAngle * Math.PI / 180;
+        var endRad = (StartAngle + sweep) * Math.PI / 180;
+        var startPt = new Point(cx + Math.Cos(startRad) * r, cy + Math.Sin(startRad) * r);
+        var endPt = new Point(cx + Math.Cos(endRad) * r, cy + Math.Sin(endRad) * r);
 
-        var startPt = new SKPoint(cx + MathF.Cos(startRad) * r, cy + MathF.Sin(startRad) * r);
-        var endPt = new SKPoint(cx + MathF.Cos(endRad) * r, cy + MathF.Sin(endRad) * r);
-
-        using var shader = SKShader.CreateLinearGradient(
-            startPt, endPt,
-            new[] { startColor, endColor },
-            new[] { 0f, 1f },
-            SKShaderTileMode.Clamp);
-
-        using var paint = new SKPaint
+        var gradBrush = new LinearGradientBrush(startColor, endColor, startPt, endPt)
         {
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = thick,
-            StrokeCap = SKStrokeCap.Round,
-            Shader = shader,
-            IsAntialias = true
+            MappingMode = BrushMappingMode.Absolute
         };
-        var rect = new SKRect(cx - r, cy - r, cx + r, cy + r);
-        canvas.DrawArc(rect, StartAngle, sweep, false, paint);
+
+        var pen = new Pen(gradBrush, thick) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        DrawArcStroke(dc, pen, cx, cy, r, StartAngle, sweep);
     }
 
-    private static void DrawTickRing(SKCanvas canvas, float cx, float cy, float r, float arcThick, float gap, bool dark)
+    private static void DrawTickRing(DrawingContext dc, double cx, double cy, double r, double arcThick, double gap, bool dark)
     {
-        // Separate tick ring INSIDE the main arc with a clear gap
-        var arcInner = r - arcThick / 2f;
+        var arcInner = r - arcThick / 2;
         var tickOuterR = arcInner - gap;
-        var tickThick = arcThick * 0.4f;
+        var tickThick = arcThick * 0.4;
         var tickInnerR = tickOuterR - tickThick;
 
-        using var paint = new SKPaint
-        {
-            Style = SKPaintStyle.Stroke,
-            Color = dark ? new SKColor(95, 95, 95) : new SKColor(170, 170, 170),
-            IsAntialias = true,
-            StrokeCap = SKStrokeCap.Round  // Rounded tick ends
-        };
+        var color = dark ? Color.FromRgb(95, 95, 95) : Color.FromRgb(170, 170, 170);
+        var brush = new SolidColorBrush(color);
 
-        // Cosmetic tick distribution: 20=180°, 50=270°, 80=360°
-        // Minor ticks interpolate evenly between anchor points
-        for (float pct = 0; pct <= 100.01f; pct += 2.5f)
+        for (double pct = 0; pct <= 100.01; pct += 2.5)
         {
-            var i = (int)MathF.Round(pct);
-            bool major = i == 20 || i == 50 || i == 80;
+            var i = (int)Math.Round(pct);
+            var major = i == 20 || i == 50 || i == 80;
 
             var angle = CosmeticAngle(pct);
-            var rad = angle * MathF.PI / 180f;
-            var cos = MathF.Cos(rad);
-            var sin = MathF.Sin(rad);
+            var rad = angle * Math.PI / 180;
+            var cos = Math.Cos(rad);
+            var sin = Math.Sin(rad);
 
-            paint.StrokeWidth = major ? 2.8f : 1.5f;
-            var inner = major ? tickInnerR : tickOuterR - tickThick * 0.5f;
+            var penWidth = major ? 2.8 : 1.5;
+            var inner = major ? tickInnerR : tickOuterR - tickThick * 0.5;
 
-            canvas.DrawLine(
-                cx + cos * inner, cy + sin * inner,
-                cx + cos * tickOuterR, cy + sin * tickOuterR,
-                paint);
+            var pen = new Pen(brush, penWidth) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+            dc.DrawLine(pen,
+                new Point(cx + cos * inner, cy + sin * inner),
+                new Point(cx + cos * tickOuterR, cy + sin * tickOuterR));
         }
     }
 
-    private static void DrawScaleLabels(SKCanvas canvas, float cx, float cy, float r, float thick, bool dark, float dpi)
+    private static void DrawScaleLabels(DrawingContext dc, double cx, double cy, double r, double thick, bool dark, double dpi)
     {
-        var fontSize = 9f * dpi;
-        using var font = new SKFont(SKTypeface.Default, fontSize);
-        using var paint = new SKPaint { Color = dark ? new SKColor(150, 150, 150) : new SKColor(120, 120, 120), IsAntialias = true };
+        var brush = dark ? new SolidColorBrush(Color.FromRgb(150, 150, 150)) : new SolidColorBrush(Color.FromRgb(120, 120, 120));
+        var fontSize = 9.0;
+        var labelR = r - thick / 2 - 26;
+        var labelY = cy;
 
-        var labelR = r - thick / 2f - 36f;
-        var labelY = cy + fontSize * 0.35f;
+        var angle20 = StartAngle + SweepAngle * 20.0 / 100;
+        var angle80 = StartAngle + SweepAngle * 80.0 / 100;
+        var x20 = cx + Math.Cos(angle20 * Math.PI / 180) * labelR;
+        var x80 = cx + Math.Cos(angle80 * Math.PI / 180) * labelR;
 
-        var angle20 = StartAngle + SweepAngle * 20f / 100f;
-        var angle80 = StartAngle + SweepAngle * 80f / 100f;
-        var x20 = cx + MathF.Cos(angle20 * MathF.PI / 180f) * labelR;
-        var x80 = cx + MathF.Cos(angle80 * MathF.PI / 180f) * labelR;
+        var ft20 = new FormattedText("20", CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, NormalTypeface, fontSize, brush, dpi);
+        var ft80 = new FormattedText("80", CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, NormalTypeface, fontSize, brush, dpi);
 
-        DrawTextNew(canvas, "20", x20, labelY, SKTextAlign.Center, font, paint);
-        DrawTextNew(canvas, "80", x80, labelY, SKTextAlign.Center, font, paint);
+        dc.DrawText(ft20, new Point(x20 - ft20.Width / 2, labelY - ft20.Height / 2));
+        dc.DrawText(ft80, new Point(x80 - ft80.Width / 2, labelY - ft80.Height / 2));
     }
 
-    private static void DrawTimeMarker(SKCanvas canvas, float cx, float cy, float r, float thick, double pct)
+    private static void DrawTimeMarker(DrawingContext dc, double cx, double cy, double r, double thick, double pct)
     {
         pct = Math.Clamp(pct, 0, 100);
-        var angle = StartAngle + SweepAngle * (float)pct / 100f;
-        var rad = angle * MathF.PI / 180f;
+        var angle = StartAngle + SweepAngle * pct / 100;
+        var rad = angle * Math.PI / 180;
 
-        var innerR = r - thick / 2f - 3f;
-        var outerR = r + thick / 2f + 3f;
+        var innerR = r - thick / 2 - 3;
+        var outerR = r + thick / 2 + 3;
 
-        using var paint = new SKPaint
-        {
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 2.5f,
-            Color = SKColors.White,
-            IsAntialias = true
-        };
-        canvas.DrawLine(
-            cx + MathF.Cos(rad) * innerR, cy + MathF.Sin(rad) * innerR,
-            cx + MathF.Cos(rad) * outerR, cy + MathF.Sin(rad) * outerR,
-            paint);
+        var pen = new Pen(Brushes.White, 2.5);
+        dc.DrawLine(pen,
+            new Point(cx + Math.Cos(rad) * innerR, cy + Math.Sin(rad) * innerR),
+            new Point(cx + Math.Cos(rad) * outerR, cy + Math.Sin(rad) * outerR));
     }
 
-    private static void DrawNeedle(SKCanvas canvas, float cx, float cy, float r, float arcThick, float tickGap, double value, bool dark)
+    private static void DrawNeedle(DrawingContext dc, double cx, double cy, double r, double arcThick, double tickGap, double value, bool dark)
     {
-        var angle = StartAngle + SweepAngle * (float)value / 100f;
-        var rad = angle * MathF.PI / 180f;
+        var angle = StartAngle + SweepAngle * value / 100;
+        var rad = angle * Math.PI / 180;
 
-        var arcInner = r - arcThick / 2f;
-        var tipLen = arcInner - tickGap - 12f;  // 10px shorter, inside tick ring
-        var tailLen = r * 0.10f;
+        var arcInner = r - arcThick / 2;
+        var tipLen = arcInner - tickGap - 12;
 
-        var tipX = cx + MathF.Cos(rad) * tipLen;
-        var tipY = cy + MathF.Sin(rad) * tipLen;
+        var tipX = cx + Math.Cos(rad) * tipLen;
+        var tipY = cy + Math.Sin(rad) * tipLen;
 
-        var needleColor = dark ? new SKColor(190, 190, 190) : new SKColor(70, 70, 70);
+        var needleColor = dark ? Color.FromRgb(190, 190, 190) : Color.FromRgb(70, 70, 70);
+        var needleBrush = new SolidColorBrush(needleColor);
 
-        // 1. Background circle FIRST (behind needle)
-        using var outerDot = new SKPaint
+        // 1. Background circle
+        var outerDotColor = dark ? Color.FromRgb(155, 155, 155) : Color.FromRgb(140, 140, 140);
+        dc.DrawEllipse(new SolidColorBrush(outerDotColor), null, new Point(cx, cy), 11, 11);
+
+        // 2. Needle — tapered trapezoid
+        var perp = rad + Math.PI / 2;
+        double baseHalfW = 7, tipHalfW = 2.5;
+
+        var geom = new StreamGeometry();
+        using (var ctx = geom.Open())
         {
-            Style = SKPaintStyle.Fill,
-            Color = dark ? new SKColor(155, 155, 155) : new SKColor(140, 140, 140),
-            IsAntialias = true
-        };
-        canvas.DrawCircle(cx, cy, 11f, outerDot);
+            ctx.BeginFigure(new Point(tipX + Math.Cos(perp) * tipHalfW, tipY + Math.Sin(perp) * tipHalfW), true, true);
+            ctx.LineTo(new Point(cx + Math.Cos(perp) * baseHalfW, cy + Math.Sin(perp) * baseHalfW), true, false);
+            ctx.LineTo(new Point(cx - Math.Cos(perp) * baseHalfW, cy - Math.Sin(perp) * baseHalfW), true, false);
+            ctx.LineTo(new Point(tipX - Math.Cos(perp) * tipHalfW, tipY - Math.Sin(perp) * tipHalfW), true, false);
+        }
+        geom.Freeze();
+        dc.DrawGeometry(needleBrush, null, geom);
 
-        // 2. Needle: tapered from base (wide) to tip (narrow), no tail behind center
-        var perp = rad + MathF.PI / 2f;
-        var baseHalfW = 7f;
-        var tipHalfW = 2.5f;
+        // Rounded tip
+        dc.DrawEllipse(needleBrush, null, new Point(tipX, tipY), tipHalfW, tipHalfW);
 
-        var bx1 = cx + MathF.Cos(perp) * baseHalfW;
-        var by1 = cy + MathF.Sin(perp) * baseHalfW;
-        var bx2 = cx - MathF.Cos(perp) * baseHalfW;
-        var by2 = cy - MathF.Sin(perp) * baseHalfW;
-
-        var tx1 = tipX + MathF.Cos(perp) * tipHalfW;
-        var ty1 = tipY + MathF.Sin(perp) * tipHalfW;
-        var tx2 = tipX - MathF.Cos(perp) * tipHalfW;
-        var ty2 = tipY - MathF.Sin(perp) * tipHalfW;
-
-        using var needlePaint = new SKPaint
-        {
-            Style = SKPaintStyle.Fill,
-            Color = needleColor,
-            IsAntialias = true
-        };
-
-        // Needle from center base to tip — no tail
-        using var path = new SKPath();
-        path.MoveTo(tx1, ty1);
-        path.LineTo(bx1, by1);
-        path.LineTo(bx2, by2);
-        path.LineTo(tx2, ty2);
-        path.Close();
-        canvas.DrawPath(path, needlePaint);
-
-        // Rounded tip cap
-        canvas.DrawCircle(tipX, tipY, tipHalfW, needlePaint);
-
-        // 3. Small inner circle ON TOP of needle
-        using var innerDot = new SKPaint
-        {
-            Style = SKPaintStyle.Fill,
-            Color = dark ? new SKColor(70, 70, 70) : new SKColor(230, 230, 230),
-            IsAntialias = true
-        };
-        canvas.DrawCircle(cx, cy, 6.5f, innerDot);
+        // 3. Inner circle on top
+        var innerDotColor = dark ? Color.FromRgb(70, 70, 70) : Color.FromRgb(230, 230, 230);
+        dc.DrawEllipse(new SolidColorBrush(innerDotColor), null, new Point(cx, cy), 6.5, 6.5);
     }
 
-    private void DrawValueText(SKCanvas canvas, float cx, float y, double value, bool dark, float dpi)
+    private void DrawValueText(DrawingContext dc, double cx, double y, double value, bool dark, double dpi)
     {
-        using var typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyleWeight.SemiBold, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright);
-        using var font = new SKFont(typeface, 20f * dpi);
-        using var paint = new SKPaint { Color = GetColorForValue(value), IsAntialias = true };
-        DrawTextNew(canvas, $"{(int)value}%", cx, y, SKTextAlign.Center, font, paint);
+        var color = GetColorForValue(value);
+        var brush = new SolidColorBrush(color);
+        var ft = new FormattedText($"{(int)value}%", CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, SemiBoldTypeface, 20, brush, dpi);
+        dc.DrawText(ft, new Point(cx - ft.Width / 2, y - ft.Height / 2));
     }
 
-    private void DrawResetText(SKCanvas canvas, float cx, float y, bool dark, float dpi)
+    private void DrawResetText(DrawingContext dc, double cx, double y, bool dark, double dpi)
     {
         if (string.IsNullOrEmpty(ResetText)) return;
-        using var font = new SKFont(SKTypeface.Default, 10f * dpi);
-        using var paint = new SKPaint { Color = dark ? new SKColor(120, 130, 140) : new SKColor(120, 120, 120), IsAntialias = true };
-        DrawTextNew(canvas, ResetText, cx, y, SKTextAlign.Center, font, paint);
+        var color = dark ? Color.FromRgb(120, 130, 140) : Color.FromRgb(120, 120, 120);
+        var brush = new SolidColorBrush(color);
+        var ft = new FormattedText(ResetText, CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, NormalTypeface, 10, brush, dpi);
+        dc.DrawText(ft, new Point(cx - ft.Width / 2, y - ft.Height / 2));
     }
 
-    /// <summary>
-    /// Maps a percentage to a cosmetic angle so that 20%=180°, 50%=270°, 80%=360°.
-    /// Minor ticks interpolate linearly between anchor points.
-    /// </summary>
-    private static float CosmeticAngle(float pct)
+    // --- Cosmetic angle mapping ---
+    private static double CosmeticAngle(double pct)
     {
-        // Anchors: 0%=135°, 20%=180°, 50%=270°, 80%=360°, 100%=405°
-        if (pct <= 20f)
-            return 135f + (pct / 20f) * (180f - 135f);
-        if (pct <= 50f)
-            return 180f + ((pct - 20f) / 30f) * (270f - 180f);
-        if (pct <= 80f)
-            return 270f + ((pct - 50f) / 30f) * (360f - 270f);
-        return 360f + ((pct - 80f) / 20f) * (405f - 360f);
+        if (pct <= 20) return 135 + (pct / 20) * (180 - 135);
+        if (pct <= 50) return 180 + ((pct - 20) / 30) * (270 - 180);
+        if (pct <= 80) return 270 + ((pct - 50) / 30) * (360 - 270);
+        return 360 + ((pct - 80) / 20) * (405 - 360);
     }
 
-    private static (SKColor start, SKColor end) GetGradientForValue(double value)
+    private static (Color start, Color end) GetGradientForValue(double value)
     {
-        if (value >= 90) return (new SKColor(0xFF, 0x92, 0x1F), new SKColor(0xEB, 0x48, 0x24));  // Red
-        if (value >= 70) return (new SKColor(0xFF, 0xD3, 0x94), new SKColor(0xFF, 0xB3, 0x57));  // Orange
-        return (new SKColor(0x52, 0xD1, 0x7C), new SKColor(0x22, 0x91, 0x8B));                    // Green
+        if (value >= 90) return (Color.FromRgb(0xFF, 0x92, 0x1F), Color.FromRgb(0xEB, 0x48, 0x24));
+        if (value >= 70) return (Color.FromRgb(0xFF, 0xD3, 0x94), Color.FromRgb(0xFF, 0xB3, 0x57));
+        return (Color.FromRgb(0x52, 0xD1, 0x7C), Color.FromRgb(0x22, 0x91, 0x8B));
     }
 
-    private static SKColor GetColorForValue(double value)
+    private static Color GetColorForValue(double value)
     {
-        // Solid color for text — use the end (darker) gradient color
-        if (value >= 90) return new SKColor(0xEB, 0x48, 0x24);
-        if (value >= 70) return new SKColor(0xFF, 0xB3, 0x57);
-        return new SKColor(0x52, 0xD1, 0x7C);
+        if (value >= 90) return Color.FromRgb(0xEB, 0x48, 0x24);
+        if (value >= 70) return Color.FromRgb(0xFF, 0xB3, 0x57);
+        return Color.FromRgb(0x52, 0xD1, 0x7C);
     }
 }
