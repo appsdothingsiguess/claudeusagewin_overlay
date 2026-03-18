@@ -35,6 +35,13 @@ public class UsageWindow
 
     public int UtilizationPercent => (int)Utilization;
 
+    public double? GetElapsedPercent(int periodSeconds)
+    {
+        var remaining = (ResetsAt - DateTimeOffset.UtcNow).TotalSeconds;
+        var elapsed = periodSeconds - remaining;
+        return Math.Clamp(elapsed / periodSeconds * 100, 0, 100);
+    }
+
     public string TimeUntilReset
     {
         get

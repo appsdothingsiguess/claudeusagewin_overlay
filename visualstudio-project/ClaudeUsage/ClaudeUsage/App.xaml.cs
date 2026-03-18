@@ -24,12 +24,28 @@ public partial class App : System.Windows.Application
 
     private Drawing.Icon? _currentIcon;
 
+    // Adaptive polling
+    private const int PollNormal = 420;       // 7 min
+    private const int PollFast = 300;         // 5 min
+    private const int PollIdle = 1200;        // 20 min
+    private const int PollError = 60;         // 1 min after errors
+    private const int PollFastExtra = 2;      // Extra fast polls after usage increase
+    private const int MaxBackoff = 1200;      // 20 min max backoff
+    private const int IdleThreshold = 600;    // 10 min idle before slow polling
+
+    private int _fastPollsRemaining;
+    private int _consecutiveErrors;
+    private double _previousFiveHourPct = -1;
+
     protected override async void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
 
-        // Apply system theme and listen for changes
-        ApplicationThemeManager.ApplySystemTheme();
+        // Initialize localization (saved preference or auto-detect)
+        var savedLang = StartupHelper.GetSavedLanguage();
+        LocalizationService.Initialize(savedLang);
+
+        // Listen for theme changes (SystemThemeWatcher in MainWindow triggers these)
         ApplicationThemeManager.Changed += OnThemeChanged;
 
         // Create the tray icon
@@ -43,16 +59,86 @@ public partial class App : System.Windows.Application
             _mainWindow.HideWithAnimation();
         };
 
-        // Set up auto-refresh timer (5 minutes)
+        // Set up adaptive refresh timer
         _refreshTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromMinutes(5)
+            Interval = TimeSpan.FromSeconds(PollNormal)
         };
-        _refreshTimer.Tick += async (s, args) => await RefreshUsageData();
+        _refreshTimer.Tick += async (s, args) => await AdaptivePoll();
         _refreshTimer.Start();
 
         // Initial data fetch
         await RefreshUsageData();
+    }
+
+    private async Task AdaptivePoll()
+    {
+        // Check if user is idle/locked — use slower polling
+        var isIdle = IdleHelper.IsUserAway(IdleThreshold);
+
+        if (isIdle)
+        {
+            _refreshTimer!.Interval = TimeSpan.FromSeconds(PollIdle);
+            // Still poll, just slower
+        }
+
+        await RefreshUsageData();
+
+        // Calculate next interval based on result
+        var nextInterval = CalculatePollInterval();
+        _refreshTimer!.Interval = TimeSpan.FromSeconds(nextInterval);
+
+        System.Diagnostics.Debug.WriteLine(
+            $"Adaptive poll: next in {nextInterval}s (fast={_fastPollsRemaining}, errors={_consecutiveErrors}, idle={isIdle})");
+    }
+
+    private int CalculatePollInterval()
+    {
+        // Error backoff
+        if (_consecutiveErrors > 0)
+        {
+            var backoff = (int)(PollError * Math.Pow(2, Math.Min(_consecutiveErrors - 1, 4)));
+            return Math.Min(backoff, MaxBackoff);
+        }
+
+        // Idle mode
+        if (IdleHelper.IsUserAway(IdleThreshold))
+            return PollIdle;
+
+        // Fast polling after usage increase
+        if (_fastPollsRemaining > 0)
+        {
+            _fastPollsRemaining--;
+            return PollFast;
+        }
+
+        // Align to imminent quota reset
+        var nextReset = SecondsUntilNextReset();
+        if (nextReset.HasValue && nextReset.Value + 5 <= PollNormal * 1.5)
+        {
+            _fastPollsRemaining = PollFastExtra;
+            return Math.Max((int)nextReset.Value + 5, PollFast);
+        }
+
+        return PollNormal;
+    }
+
+    private double? SecondsUntilNextReset()
+    {
+        if (_lastUsageData == null) return null;
+
+        double? closest = null;
+
+        var windows = new[] { _lastUsageData.FiveHour, _lastUsageData.SevenDay, _lastUsageData.Sonnet };
+        foreach (var w in windows)
+        {
+            if (w == null) continue;
+            var remaining = (w.ResetsAt - DateTimeOffset.UtcNow).TotalSeconds;
+            if (remaining > 0 && (closest == null || remaining < closest))
+                closest = remaining;
+        }
+
+        return closest;
     }
 
     private Drawing.Icon CreateUsageIcon(int percentage, Drawing.Color bgColor)
@@ -237,14 +323,14 @@ public partial class App : System.Windows.Application
 
         var refreshItem = new System.Windows.Controls.MenuItem
         {
-            Header = "Refresh Now",
+            Header = LocalizationService.T("refresh_now"),
             Icon = new SymbolIcon { Symbol = SymbolRegular.ArrowClockwise24 }
         };
         refreshItem.Click += async (s, e) => await RefreshUsageData();
 
         _launchAtLoginItem = new System.Windows.Controls.MenuItem
         {
-            Header = "Launch at Login",
+            Header = LocalizationService.T("launch_at_login"),
             IsCheckable = true,
             IsChecked = StartupHelper.IsLaunchAtLoginEnabled()
         };
@@ -255,7 +341,7 @@ public partial class App : System.Windows.Application
 
         var exitItem = new System.Windows.Controls.MenuItem
         {
-            Header = "Exit",
+            Header = LocalizationService.T("exit"),
             Icon = new SymbolIcon { Symbol = SymbolRegular.Dismiss24 }
         };
         exitItem.Click += (s, e) =>
@@ -264,8 +350,32 @@ public partial class App : System.Windows.Application
             Shutdown();
         };
 
+        // Language submenu
+        var languageItem = new System.Windows.Controls.MenuItem
+        {
+            Header = LocalizationService.T("language"),
+            Icon = new SymbolIcon { Symbol = SymbolRegular.Globe24 }
+        };
+        foreach (var (code, displayName) in LocalizationService.SupportedLanguages)
+        {
+            var langCode = code;
+            var langItem = new System.Windows.Controls.MenuItem { Header = displayName };
+            langItem.Click += (s, e) =>
+            {
+                LocalizationService.SetLanguage(langCode);
+                StartupHelper.SaveLanguage(langCode);
+                // Rebuild menu and refresh UI with new language
+                CreateContextMenu();
+                _mainWindow?.ApplyLocalization();
+                if (_lastUsageData != null)
+                    _mainWindow?.UpdateUsageData(_lastUsageData, _lastUpdated);
+            };
+            languageItem.Items.Add(langItem);
+        }
+
         _contextMenu.Items.Add(refreshItem);
         _contextMenu.Items.Add(_launchAtLoginItem);
+        _contextMenu.Items.Add(languageItem);
         _contextMenu.Items.Add(new Separator());
         _contextMenu.Items.Add(exitItem);
     }
@@ -300,17 +410,17 @@ public partial class App : System.Windows.Application
         // Position near the tray icon (bottom-right of screen)
         var workArea = System.Windows.SystemParameters.WorkArea;
         var targetLeft = workArea.Right - _mainWindow.Width - 10;
-        var targetTop = workArea.Bottom - _mainWindow.Height - 10;
 
-        _mainWindow.ShowWithAnimation(targetLeft, targetTop);
+        _mainWindow.ShowWithAnimation(targetLeft, workArea.Bottom);
     }
 
     public async Task RefreshUsageData()
     {
         if (!CredentialService.CredentialsExist())
         {
+            _consecutiveErrors++;
             UpdateTrayIconError();
-            _notifyIcon!.Text = "Claude Usage - No credentials found\nRun 'claude' to authenticate";
+            _notifyIcon!.Text = $"Claude Usage - {LocalizationService.T("no_credentials")}\n{LocalizationService.T("run_claude")}";
             return;
         }
 
@@ -318,10 +428,22 @@ public partial class App : System.Windows.Application
 
         if (usage == null)
         {
+            _consecutiveErrors++;
             UpdateTrayIconError();
-            _notifyIcon!.Text = "Claude Usage - Failed to fetch data";
+            _notifyIcon!.Text = $"Claude Usage - {LocalizationService.T("failed_to_fetch")}";
             return;
         }
+
+        // Successful fetch — reset error count
+        _consecutiveErrors = 0;
+
+        // Detect usage increase for fast polling
+        var currentPct = usage.FiveHour?.Utilization ?? 0;
+        if (_previousFiveHourPct >= 0 && currentPct > _previousFiveHourPct)
+        {
+            _fastPollsRemaining = PollFastExtra + 1;
+        }
+        _previousFiveHourPct = currentPct;
 
         _lastUsageData = usage;
         _lastUpdated = DateTime.Now;
@@ -341,7 +463,7 @@ public partial class App : System.Windows.Application
         var sessionReset = usage.FiveHour?.TimeUntilReset ?? "N/A";
         var weeklyReset = usage.SevenDay?.TimeUntilReset ?? "N/A";
 
-        _notifyIcon!.Text = $"Claude Usage\nSession: {sessionPct}% (resets in {sessionReset})\nWeekly: {weeklyPct}% (resets in {weeklyReset})";
+        _notifyIcon!.Text = $"Claude Usage\n{LocalizationService.T("tooltip_session", sessionPct, sessionReset)}\n{LocalizationService.T("tooltip_weekly", weeklyPct, weeklyReset)}";
 
         // Update popup if visible
         if (_mainWindow?.IsVisible == true)
@@ -352,6 +474,7 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
+        if (_mainWindow != null) SystemThemeWatcher.UnWatch(_mainWindow);
         ApplicationThemeManager.Changed -= OnThemeChanged;
         _notifyIcon?.Dispose();
         _currentIcon?.Dispose();

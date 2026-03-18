@@ -6,6 +6,7 @@ public static class StartupHelper
 {
     private const string AppName = "ClaudeUsage";
     private const string RegistryKeyPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+    private const string SettingsKeyPath = @"SOFTWARE\ClaudeUsage";
 
     public static bool IsLaunchAtLoginEnabled()
     {
@@ -43,6 +44,32 @@ public static class StartupHelper
         catch
         {
             // Silently fail if registry access is denied
+        }
+    }
+
+    public static string? GetSavedLanguage()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(SettingsKeyPath, false);
+            return key?.GetValue("Language") as string;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static void SaveLanguage(string langCode)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(SettingsKeyPath);
+            key.SetValue("Language", langCode);
+        }
+        catch
+        {
+            // Silently fail
         }
     }
 }
