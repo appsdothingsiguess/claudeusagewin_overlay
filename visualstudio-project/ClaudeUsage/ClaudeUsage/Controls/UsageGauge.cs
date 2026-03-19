@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
+using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
 using Color = System.Windows.Media.Color;
 using FlowDirection = System.Windows.FlowDirection;
@@ -36,7 +37,7 @@ public class UsageGauge : FrameworkElement
 
     public static readonly DependencyProperty IsDarkThemeProperty =
         DependencyProperty.Register(nameof(IsDarkTheme), typeof(bool), typeof(UsageGauge),
-            new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender, OnThemeChanged));
 
     public double Value { get => (double)GetValue(ValueProperty); set => SetValue(ValueProperty, value); }
     public double? TimeElapsedPercent { get => (double?)GetValue(TimeElapsedPercentProperty); set => SetValue(TimeElapsedPercentProperty, value); }
@@ -51,6 +52,97 @@ public class UsageGauge : FrameworkElement
     private static readonly Typeface SemiBoldTypeface = new(SegoeUI, FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
     private static readonly Typeface NormalTypeface = new(SegoeUI, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
 
+    #region Cached Brushes & Pens (frozen for perf)
+
+    // Theme-dependent cached resources (both themes cached, selected at render time)
+    private Brush? _labelBrushDark;
+    private Brush? _labelBrushLight;
+    private Pen? _bgArcPenDark;
+    private Pen? _bgArcPenLight;
+    private Brush? _tickBrushDark;
+    private Brush? _tickBrushLight;
+    private Brush? _scaleBrushDark;
+    private Brush? _scaleBrushLight;
+    private Brush? _needleBrushDark;
+    private Brush? _needleBrushLight;
+    private Brush? _outerDotBrushDark;
+    private Brush? _outerDotBrushLight;
+    private Brush? _innerDotBrushDark;
+    private Brush? _innerDotBrushLight;
+    private Brush? _resetBrushDark;
+    private Brush? _resetBrushLight;
+
+    // Theme-independent
+    private static readonly Pen TimeMarkerPen;
+    private double _lastArcThick;
+
+    static UsageGauge()
+    {
+        var tmPen = new Pen(Brushes.White, 2.5);
+        tmPen.Freeze();
+        TimeMarkerPen = tmPen;
+    }
+
+    private static Brush FrozenBrush(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static Pen FrozenRoundPen(Brush brush, double thickness)
+    {
+        var pen = new Pen(brush, thickness) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        pen.Freeze();
+        return pen;
+    }
+
+    private void EnsureCachedResources()
+    {
+        // Only build once per theme
+        if (_labelBrushDark != null) return;
+
+        _labelBrushDark = FrozenBrush(210, 210, 210);
+        _labelBrushLight = FrozenBrush(50, 50, 50);
+
+        _tickBrushDark = FrozenBrush(95, 95, 95);
+        _tickBrushLight = FrozenBrush(170, 170, 170);
+
+        _scaleBrushDark = FrozenBrush(150, 150, 150);
+        _scaleBrushLight = FrozenBrush(120, 120, 120);
+
+        _needleBrushDark = FrozenBrush(190, 190, 190);
+        _needleBrushLight = FrozenBrush(70, 70, 70);
+
+        _outerDotBrushDark = FrozenBrush(155, 155, 155);
+        _outerDotBrushLight = FrozenBrush(140, 140, 140);
+
+        _innerDotBrushDark = FrozenBrush(70, 70, 70);
+        _innerDotBrushLight = FrozenBrush(230, 230, 230);
+
+        _resetBrushDark = FrozenBrush(120, 130, 140);
+        _resetBrushLight = FrozenBrush(120, 120, 120);
+    }
+
+    private void EnsureBgArcPen(double arcThick)
+    {
+        if (_bgArcPenDark != null && Math.Abs(_lastArcThick - arcThick) < 0.01) return;
+        _lastArcThick = arcThick;
+
+        var darkBrush = FrozenBrush(55, 55, 55);
+        _bgArcPenDark = FrozenRoundPen(darkBrush, arcThick);
+
+        var lightBrush = FrozenBrush(225, 225, 225);
+        _bgArcPenLight = FrozenRoundPen(lightBrush, arcThick);
+    }
+
+    private static void OnThemeChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        // Theme change doesn't invalidate cached brushes — we keep both sets
+    }
+
+    #endregion
+
     protected override void OnRender(DrawingContext dc)
     {
         base.OnRender(dc);
@@ -61,6 +153,8 @@ public class UsageGauge : FrameworkElement
         var w = ActualWidth;
         var h = ActualHeight;
         if (w <= 0 || h <= 0) return;
+
+        EnsureCachedResources();
 
         var cx = w / 2;
         var dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
@@ -76,6 +170,8 @@ public class UsageGauge : FrameworkElement
         var radius = Math.Min(maxRadiusFromH, maxRadiusFromW);
         var arcThick = radius * 0.26;
         var tickGap = 8.0;
+
+        EnsureBgArcPen(arcThick);
 
         var cy = labelAreaH + radius + arcThick / 2;
 
@@ -127,15 +223,14 @@ public class UsageGauge : FrameworkElement
     private void DrawLabel(DrawingContext dc, double cx, double y, bool dark, double fontSize, double dpi)
     {
         if (string.IsNullOrEmpty(Label)) return;
-        var brush = dark ? new SolidColorBrush(Color.FromRgb(210, 210, 210)) : new SolidColorBrush(Color.FromRgb(50, 50, 50));
+        var brush = dark ? _labelBrushDark! : _labelBrushLight!;
         var ft = new FormattedText(Label, CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, BoldTypeface, fontSize, brush, dpi);
         dc.DrawText(ft, new Point(cx - ft.Width / 2, y - ft.Height / 2));
     }
 
-    private static void DrawBackgroundArc(DrawingContext dc, double cx, double cy, double r, double thick, bool dark)
+    private void DrawBackgroundArc(DrawingContext dc, double cx, double cy, double r, double thick, bool dark)
     {
-        var color = dark ? Color.FromRgb(55, 55, 55) : Color.FromRgb(225, 225, 225);
-        var pen = new Pen(new SolidColorBrush(color), thick) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
+        var pen = dark ? _bgArcPenDark! : _bgArcPenLight!;
         DrawArcStroke(dc, pen, cx, cy, r, StartAngle, SweepAngle);
     }
 
@@ -160,15 +255,29 @@ public class UsageGauge : FrameworkElement
         DrawArcStroke(dc, pen, cx, cy, r, StartAngle, sweep);
     }
 
-    private static void DrawTickRing(DrawingContext dc, double cx, double cy, double r, double arcThick, double gap, bool dark)
+    // Cached tick pens (2 per theme: major + minor)
+    private Pen? _tickMajorPenDark, _tickMajorPenLight, _tickMinorPenDark, _tickMinorPenLight;
+
+    private void EnsureTickPens()
     {
+        if (_tickMajorPenDark != null) return;
+        _tickMajorPenDark = FrozenRoundPen(_tickBrushDark!, 2.8);
+        _tickMajorPenLight = FrozenRoundPen(_tickBrushLight!, 2.8);
+        _tickMinorPenDark = FrozenRoundPen(_tickBrushDark!, 1.5);
+        _tickMinorPenLight = FrozenRoundPen(_tickBrushLight!, 1.5);
+    }
+
+    private void DrawTickRing(DrawingContext dc, double cx, double cy, double r, double arcThick, double gap, bool dark)
+    {
+        EnsureTickPens();
+
         var arcInner = r - arcThick / 2;
         var tickOuterR = arcInner - gap;
         var tickThick = arcThick * 0.4;
         var tickInnerR = tickOuterR - tickThick;
 
-        var color = dark ? Color.FromRgb(95, 95, 95) : Color.FromRgb(170, 170, 170);
-        var brush = new SolidColorBrush(color);
+        var majorPen = dark ? _tickMajorPenDark! : _tickMajorPenLight!;
+        var minorPen = dark ? _tickMinorPenDark! : _tickMinorPenLight!;
 
         for (double pct = 0; pct <= 100.01; pct += 2.5)
         {
@@ -180,19 +289,18 @@ public class UsageGauge : FrameworkElement
             var cos = Math.Cos(rad);
             var sin = Math.Sin(rad);
 
-            var penWidth = major ? 2.8 : 1.5;
             var inner = major ? tickInnerR : tickOuterR - tickThick * 0.5;
+            var pen = major ? majorPen : minorPen;
 
-            var pen = new Pen(brush, penWidth) { StartLineCap = PenLineCap.Round, EndLineCap = PenLineCap.Round };
             dc.DrawLine(pen,
                 new Point(cx + cos * inner, cy + sin * inner),
                 new Point(cx + cos * tickOuterR, cy + sin * tickOuterR));
         }
     }
 
-    private static void DrawScaleLabels(DrawingContext dc, double cx, double cy, double r, double thick, bool dark, double dpi)
+    private void DrawScaleLabels(DrawingContext dc, double cx, double cy, double r, double thick, bool dark, double dpi)
     {
-        var brush = dark ? new SolidColorBrush(Color.FromRgb(150, 150, 150)) : new SolidColorBrush(Color.FromRgb(120, 120, 120));
+        var brush = dark ? _scaleBrushDark! : _scaleBrushLight!;
         var fontSize = 9.0;
         var labelR = r - thick / 2 - 26;
         var labelY = cy;
@@ -218,13 +326,12 @@ public class UsageGauge : FrameworkElement
         var innerR = r - thick / 2 - 3;
         var outerR = r + thick / 2 + 3;
 
-        var pen = new Pen(Brushes.White, 2.5);
-        dc.DrawLine(pen,
+        dc.DrawLine(TimeMarkerPen,
             new Point(cx + Math.Cos(rad) * innerR, cy + Math.Sin(rad) * innerR),
             new Point(cx + Math.Cos(rad) * outerR, cy + Math.Sin(rad) * outerR));
     }
 
-    private static void DrawNeedle(DrawingContext dc, double cx, double cy, double r, double arcThick, double tickGap, double value, bool dark)
+    private void DrawNeedle(DrawingContext dc, double cx, double cy, double r, double arcThick, double tickGap, double value, bool dark)
     {
         var angle = StartAngle + SweepAngle * value / 100;
         var rad = angle * Math.PI / 180;
@@ -235,12 +342,11 @@ public class UsageGauge : FrameworkElement
         var tipX = cx + Math.Cos(rad) * tipLen;
         var tipY = cy + Math.Sin(rad) * tipLen;
 
-        var needleColor = dark ? Color.FromRgb(190, 190, 190) : Color.FromRgb(70, 70, 70);
-        var needleBrush = new SolidColorBrush(needleColor);
+        var needleBrush = dark ? _needleBrushDark! : _needleBrushLight!;
 
         // 1. Background circle
-        var outerDotColor = dark ? Color.FromRgb(155, 155, 155) : Color.FromRgb(140, 140, 140);
-        dc.DrawEllipse(new SolidColorBrush(outerDotColor), null, new Point(cx, cy), 11, 11);
+        var outerDotBrush = dark ? _outerDotBrushDark! : _outerDotBrushLight!;
+        dc.DrawEllipse(outerDotBrush, null, new Point(cx, cy), 11, 11);
 
         // 2. Needle — tapered trapezoid
         var perp = rad + Math.PI / 2;
@@ -261,14 +367,17 @@ public class UsageGauge : FrameworkElement
         dc.DrawEllipse(needleBrush, null, new Point(tipX, tipY), tipHalfW, tipHalfW);
 
         // 3. Inner circle on top
-        var innerDotColor = dark ? Color.FromRgb(70, 70, 70) : Color.FromRgb(230, 230, 230);
-        dc.DrawEllipse(new SolidColorBrush(innerDotColor), null, new Point(cx, cy), 6.5, 6.5);
+        var innerDotBrush = dark ? _innerDotBrushDark! : _innerDotBrushLight!;
+        dc.DrawEllipse(innerDotBrush, null, new Point(cx, cy), 6.5, 6.5);
     }
+
+    private static readonly Brush ValueBrushGreen = FrozenBrush(0x52, 0xD1, 0x7C);
+    private static readonly Brush ValueBrushYellow = FrozenBrush(0xFF, 0xB3, 0x57);
+    private static readonly Brush ValueBrushRed = FrozenBrush(0xEB, 0x48, 0x24);
 
     private void DrawValueText(DrawingContext dc, double cx, double y, double value, bool dark, double dpi)
     {
-        var color = GetColorForValue(value);
-        var brush = new SolidColorBrush(color);
+        var brush = value >= 90 ? ValueBrushRed : value >= 70 ? ValueBrushYellow : ValueBrushGreen;
         var ft = new FormattedText($"{(int)value}%", CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, SemiBoldTypeface, 20, brush, dpi);
         dc.DrawText(ft, new Point(cx - ft.Width / 2, y - ft.Height / 2));
     }
@@ -276,8 +385,7 @@ public class UsageGauge : FrameworkElement
     private void DrawResetText(DrawingContext dc, double cx, double y, bool dark, double dpi)
     {
         if (string.IsNullOrEmpty(ResetText)) return;
-        var color = dark ? Color.FromRgb(120, 130, 140) : Color.FromRgb(120, 120, 120);
-        var brush = new SolidColorBrush(color);
+        var brush = dark ? _resetBrushDark! : _resetBrushLight!;
         var ft = new FormattedText(ResetText, CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, NormalTypeface, 10, brush, dpi);
         dc.DrawText(ft, new Point(cx - ft.Width / 2, y - ft.Height / 2));
     }

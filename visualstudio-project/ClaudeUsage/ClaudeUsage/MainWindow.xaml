@@ -10,7 +10,7 @@
         Topmost="True"
         WindowStartupLocation="Manual"
         ExtendsContentIntoTitleBar="True"
-        WindowBackdropType="Mica"
+        WindowBackdropType="None"
         KeyDown="Window_KeyDown"
         SizeToContent="Height">
 

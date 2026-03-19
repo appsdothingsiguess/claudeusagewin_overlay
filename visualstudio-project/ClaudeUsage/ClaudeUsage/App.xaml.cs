@@ -24,6 +24,9 @@ public partial class App : System.Windows.Application
 
     private Drawing.Icon? _currentIcon;
 
+    // SVG document cache — avoids re-parsing embedded resources on every icon update
+    private readonly Dictionary<string, SvgDocument?> _svgCache = new();
+
     // Adaptive polling
     private const int PollNormal = 420;       // 7 min
     private const int PollFast = 300;         // 5 min
@@ -171,16 +174,29 @@ public partial class App : System.Windows.Application
 
     private SvgDocument? LoadSvgFromResource(string fileName)
     {
+        if (_svgCache.TryGetValue(fileName, out var cached))
+            return cached;
+
         var assembly = System.Reflection.Assembly.GetExecutingAssembly();
         var resourceNames = assembly.GetManifestResourceNames();
         var resourceName = resourceNames.FirstOrDefault(r => r.EndsWith(fileName));
 
-        if (resourceName == null) return null;
+        if (resourceName == null)
+        {
+            _svgCache[fileName] = null;
+            return null;
+        }
 
         using var stream = assembly.GetManifestResourceStream(resourceName);
-        if (stream == null) return null;
+        if (stream == null)
+        {
+            _svgCache[fileName] = null;
+            return null;
+        }
 
-        return SvgDocument.Open<SvgDocument>(stream);
+        var doc = SvgDocument.Open<SvgDocument>(stream);
+        _svgCache[fileName] = doc;
+        return doc;
     }
 
     private Drawing.Icon CreateIconFromSvg(SvgDocument svgDoc, Drawing.Color dotColor)

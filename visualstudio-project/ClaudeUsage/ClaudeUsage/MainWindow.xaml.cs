@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using ClaudeUsage.Helpers;
 using ClaudeUsage.Models;
@@ -96,53 +95,18 @@ public partial class MainWindow : FluentWindow
             finalTop = workArea.Top;
         Left = Math.Min(targetLeft, workArea.Right - ActualWidth - 10);
 
-        // Slide up from slightly below, but keep the start position on-screen too
-        var animStart = Math.Min(finalTop + 20, workArea.Bottom - ActualHeight);
-        Top = animStart;
+        Top = finalTop;
         Opacity = 1;
+        _bottomEdge = Top + ActualHeight;
 
         _countdownTimer.Start();
-
-        var slideAnimation = new DoubleAnimation
-        {
-            From = animStart,
-            To = finalTop,
-            Duration = TimeSpan.FromMilliseconds(200),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-        slideAnimation.Completed += (s, e) =>
-        {
-            // CRITICAL: clear animation so Top can be set freely by SizeChanged
-            BeginAnimation(TopProperty, null);
-            Top = finalTop;
-            _bottomEdge = Top + ActualHeight;
-        };
-
-        BeginAnimation(TopProperty, slideAnimation);
         Activate();
     }
 
     public void HideWithAnimation()
     {
-        // Stop countdown timer when hidden
         _countdownTimer.Stop();
-
-        // Animate slide down
-        var slideAnimation = new DoubleAnimation
-        {
-            To = Top + 20,
-            Duration = TimeSpan.FromMilliseconds(150),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-        };
-
-        slideAnimation.Completed += (s, e) =>
-        {
-            Hide();
-            // Clear animation so position can be set normally next time
-            BeginAnimation(TopProperty, null);
-        };
-
-        BeginAnimation(TopProperty, slideAnimation);
+        Hide();
     }
 
     public void UpdateUsageData(UsageData? data, DateTime lastUpdated)
@@ -240,16 +204,28 @@ public partial class MainWindow : FluentWindow
         return new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x52, 0xD1, 0x7C));
     }
 
+    // Track registered SizeChanged handlers to avoid leaking them
+    private readonly Dictionary<System.Windows.Controls.Border, (System.Windows.Controls.Grid grid, System.Windows.SizeChangedEventHandler handler)> _barFillHandlers = new();
+
     private void SetBarFill(System.Windows.Controls.Border fillBar, int percent)
     {
         var parent = fillBar.Parent as System.Windows.Controls.Grid;
         if (parent == null) return;
 
-        // Bind fill width to parent width * percentage
-        parent.SizeChanged += (s, e) =>
+        // Remove previous handler if one exists
+        if (_barFillHandlers.TryGetValue(fillBar, out var prev))
+        {
+            prev.grid.SizeChanged -= prev.handler;
+        }
+
+        // Register new handler
+        System.Windows.SizeChangedEventHandler handler = (s, e) =>
         {
             fillBar.Width = parent.ActualWidth * Math.Clamp(percent, 0, 100) / 100.0;
         };
+        parent.SizeChanged += handler;
+        _barFillHandlers[fillBar] = (parent, handler);
+
         fillBar.Width = parent.ActualWidth * Math.Clamp(percent, 0, 100) / 100.0;
     }
 
