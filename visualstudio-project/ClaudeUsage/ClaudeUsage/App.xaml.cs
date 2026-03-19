@@ -474,7 +474,8 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
-        if (_mainWindow != null) SystemThemeWatcher.UnWatch(_mainWindow);
+        try { if (_mainWindow != null) SystemThemeWatcher.UnWatch(_mainWindow); }
+        catch (InvalidOperationException) { /* window handle already destroyed */ }
         ApplicationThemeManager.Changed -= OnThemeChanged;
         _notifyIcon?.Dispose();
         _currentIcon?.Dispose();
