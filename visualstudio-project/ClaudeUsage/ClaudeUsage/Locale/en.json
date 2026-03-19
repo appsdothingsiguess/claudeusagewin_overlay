@@ -9,6 +9,7 @@
   "of_limit": "of ${0} limit",
   "resets_in": "Resets in {0}",
   "expander_header": "Sonnet Only and Overage Usage",
+  "show_details": "Show Details",
   "launch_at_login": "Launch at Login",
   "language": "Language",
   "refresh_now": "Refresh Now",

@@ -9,6 +9,7 @@
   "of_limit": "di ${0} limite",
   "resets_in": "Reset tra {0}",
   "expander_header": "Sonnet e utilizzo eccedente",
+  "show_details": "Mostra dettagli",
   "launch_at_login": "Avvia all'accesso",
   "language": "Lingua",
   "refresh_now": "Aggiorna ora",

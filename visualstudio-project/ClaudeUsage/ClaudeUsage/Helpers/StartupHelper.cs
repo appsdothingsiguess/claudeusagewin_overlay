@@ -47,6 +47,32 @@ public static class StartupHelper
         }
     }
 
+    public static bool GetShowDetails()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(SettingsKeyPath, false);
+            return key?.GetValue("ShowDetails") is int val && val != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static void SetShowDetails(bool show)
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(SettingsKeyPath);
+            key.SetValue("ShowDetails", show ? 1 : 0, RegistryValueKind.DWord);
+        }
+        catch
+        {
+            // Silently fail
+        }
+    }
+
     public static string? GetSavedLanguage()
     {
         try

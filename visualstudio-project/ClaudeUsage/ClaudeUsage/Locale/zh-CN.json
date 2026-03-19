@@ -9,6 +9,7 @@
   "of_limit": "${0}额度",
   "resets_in": "{0}后重置",
   "expander_header": "Sonnet与超额用量",
+  "show_details": "显示详情",
   "launch_at_login": "开机启动",
   "language": "语言",
   "refresh_now": "立即刷新",

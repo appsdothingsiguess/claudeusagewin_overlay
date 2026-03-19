@@ -20,6 +20,7 @@ public partial class App : System.Windows.Application
     private DateTime _lastUpdated;
     private Forms.ContextMenuStrip? _contextMenu;
     private Forms.ToolStripMenuItem? _launchAtLoginItem;
+    private Forms.ToolStripMenuItem? _showDetailsItem;
     private DateTime _lastDeactivated;
 
     private Drawing.Icon? _currentIcon;
@@ -56,6 +57,7 @@ public partial class App : System.Windows.Application
 
         // Create the main window (hidden initially)
         _mainWindow = new MainWindow();
+        _mainWindow.SetShowDetails(StartupHelper.GetShowDetails());
         _mainWindow.Deactivated += (s, args) =>
         {
             _lastDeactivated = DateTime.Now;
@@ -347,6 +349,18 @@ public partial class App : System.Windows.Application
             StartupHelper.SetLaunchAtLogin(_launchAtLoginItem.Checked);
         };
 
+        _showDetailsItem = new Forms.ToolStripMenuItem(LocalizationService.T("show_details"))
+        {
+            CheckOnClick = true,
+            Checked = StartupHelper.GetShowDetails()
+        };
+        _showDetailsItem.Click += (s, e) =>
+        {
+            var show = _showDetailsItem.Checked;
+            StartupHelper.SetShowDetails(show);
+            _mainWindow?.SetShowDetails(show);
+        };
+
         var exitItem = new Forms.ToolStripMenuItem(LocalizationService.T("exit"));
         exitItem.Click += (s, e) =>
         {
@@ -374,6 +388,7 @@ public partial class App : System.Windows.Application
         }
 
         _contextMenu.Items.Add(refreshItem);
+        _contextMenu.Items.Add(_showDetailsItem);
         _contextMenu.Items.Add(_launchAtLoginItem);
         _contextMenu.Items.Add(languageItem);
         _contextMenu.Items.Add(new Forms.ToolStripSeparator());
@@ -393,14 +408,8 @@ public partial class App : System.Windows.Application
             return;
         }
 
-        // Update the window with latest data
         _mainWindow.UpdateUsageData(_lastUsageData, _lastUpdated);
-
-        // Position near the tray icon (bottom-right of screen)
-        var workArea = System.Windows.SystemParameters.WorkArea;
-        var targetLeft = workArea.Right - _mainWindow.Width - 10;
-
-        _mainWindow.ShowWithAnimation(targetLeft, workArea.Bottom);
+        _mainWindow.ShowPopup();
     }
 
     public async Task RefreshUsageData()

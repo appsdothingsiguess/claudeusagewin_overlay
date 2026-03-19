@@ -9,6 +9,7 @@
   "of_limit": "${0} 한도 중",
   "resets_in": "{0} 후 초기화",
   "expander_header": "Sonnet 및 초과 사용량",
+  "show_details": "세부 정보 표시",
   "launch_at_login": "로그인 시 실행",
   "language": "언어",
   "refresh_now": "지금 새로고침",

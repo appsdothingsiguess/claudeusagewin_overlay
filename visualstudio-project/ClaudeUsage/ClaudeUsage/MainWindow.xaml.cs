@@ -16,6 +16,9 @@ public partial class MainWindow : FluentWindow
 
     // Brushes kept for backward compat (tray icon colors in App.xaml.cs reference these indirectly)
 
+    private const double HeightCompact = 340;
+    private const double HeightDetailed = 470;
+
     private double _bottomEdge;
     private UsageData? _currentData;
     private readonly DispatcherTimer _countdownTimer;
@@ -34,7 +37,10 @@ public partial class MainWindow : FluentWindow
         };
         _countdownTimer.Tick += (s, e) => UpdateCountdowns();
 
-        // When window resizes (expander), grow upward keeping bottom edge fixed
+        // On first show, re-apply position after the window handle is created
+        SourceInitialized += (s, e) => PositionBottomRight();
+
+        // When window height changes, grow upward keeping bottom edge fixed
         SizeChanged += (s, e) =>
         {
             if (_bottomEdge > 0 && IsVisible)
@@ -56,12 +62,17 @@ public partial class MainWindow : FluentWindow
         TitleText.Text = LocalizationService.T("title");
         SessionGauge.Label = LocalizationService.T("session");
         WeeklyGauge.Label = LocalizationService.T("weekly");
-        DetailsExpander.Header = LocalizationService.T("expander_header");
         SonnetLabel.Text = LocalizationService.T("sonnet_only");
         ModelSpecificLabel.Text = LocalizationService.T("model_specific");
         OverageLabel.Text = LocalizationService.T("overage");
         ExtraUsageLabel.Text = LocalizationService.T("extra_usage");
         LastUpdatedText.Text = LocalizationService.T("no_data");
+    }
+
+    public void SetShowDetails(bool show)
+    {
+        DetailsPanel.Visibility = show ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        Height = show ? HeightDetailed : HeightCompact;
     }
 
     private void OnThemeChanged(ApplicationTheme theme, System.Windows.Media.Color accent)
@@ -76,31 +87,20 @@ public partial class MainWindow : FluentWindow
         WeeklyGauge.IsDarkTheme = isDark;
     }
 
-    public void ShowWithAnimation(double targetLeft, double bottomEdge)
+    private void PositionBottomRight()
     {
-        // Show off-screen first to measure content height
-        Left = targetLeft;
-        Top = bottomEdge;
-        Opacity = 0;
-        Show();
-        UpdateLayout();
-
-        // Now we know ActualHeight — position window so bottom aligns with bottomEdge
         var workArea = System.Windows.SystemParameters.WorkArea;
-        _bottomEdge = bottomEdge - 10;
-        var finalTop = _bottomEdge - ActualHeight;
+        Left = workArea.Right - Width - 10;
+        Top = workArea.Bottom - Height - 10;
+        _bottomEdge = Top + Height;
+    }
 
-        // Clamp to work area so the window is never off-screen
-        if (finalTop < workArea.Top)
-            finalTop = workArea.Top;
-        Left = Math.Min(targetLeft, workArea.Right - ActualWidth - 10);
-
-        Top = finalTop;
-        Opacity = 1;
-        _bottomEdge = Top + ActualHeight;
-
-        _countdownTimer.Start();
+    public void ShowPopup()
+    {
+        PositionBottomRight();
+        Show();
         Activate();
+        _countdownTimer.Start();
     }
 
     public void HideWithAnimation()

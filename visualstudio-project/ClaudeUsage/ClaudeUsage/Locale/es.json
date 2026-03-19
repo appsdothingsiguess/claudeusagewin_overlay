@@ -9,6 +9,7 @@
   "of_limit": "de ${0} límite",
   "resets_in": "Se reinicia en {0}",
   "expander_header": "Sonnet y uso excedente",
+  "show_details": "Mostrar detalles",
   "launch_at_login": "Iniciar con Windows",
   "language": "Idioma",
   "refresh_now": "Actualizar ahora",

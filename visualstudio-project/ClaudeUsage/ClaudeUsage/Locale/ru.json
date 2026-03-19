@@ -9,6 +9,7 @@
   "of_limit": "из ${0} лимита",
   "resets_in": "Сброс через {0}",
   "expander_header": "Sonnet и превышение",
+  "show_details": "Показать подробности",
   "launch_at_login": "Запускать при входе",
   "language": "Язык",
   "refresh_now": "Обновить сейчас",
