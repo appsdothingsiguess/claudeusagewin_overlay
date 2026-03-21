@@ -69,6 +69,13 @@ public partial class App : System.Windows.Application
 
         // Initial data fetch
         await RefreshUsageData();
+
+        // Check for updates (non-blocking)
+        await UpdateService.CheckForUpdateAsync();
+        if (UpdateService.UpdateAvailable && UpdateService.LatestReleaseUrl != null)
+        {
+            _mainWindow?.ShowUpdateAvailable(UpdateService.LatestReleaseUrl, UpdateService.LatestVersion ?? "");
+        }
     }
 
     private async Task AdaptivePoll()

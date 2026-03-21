@@ -65,6 +65,15 @@ public partial class MainWindow : FluentWindow
         LastUpdatedText.Text = LocalizationService.T("no_data");
     }
 
+    public void ShowUpdateAvailable(string releaseUrl, string version)
+    {
+        UpdateAvailableText.Text = $"v{version} available!";
+        UpdateAvailableText.Visibility = System.Windows.Visibility.Visible;
+        GitHubButton.Icon = new Wpf.Ui.Controls.SymbolIcon { Symbol = Wpf.Ui.Controls.SymbolRegular.ArrowDownload24 };
+        GitHubButton.ToolTip = $"Download v{version}";
+        GitHubButton.Tag = releaseUrl;
+    }
+
     private void OnThemeChanged(ApplicationTheme theme, System.Windows.Media.Color accent)
     {
         UpdateGaugeTheme();
@@ -284,9 +293,10 @@ public partial class MainWindow : FluentWindow
 
     private void GitHubButton_Click(object sender, System.Windows.RoutedEventArgs e)
     {
+        var url = GitHubButton.Tag as string ?? "https://github.com/sr-kai/claudeusagewin";
         Process.Start(new ProcessStartInfo
         {
-            FileName = "https://github.com/sr-kai/claudeusagewin",
+            FileName = url,
             UseShellExecute = true
         });
     }

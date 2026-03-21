@@ -139,7 +139,8 @@
                     <TextBlock x:Name="LastUpdatedText" Text="Updated --" FontSize="11" Foreground="{ui:ThemeResource TextFillColorTertiaryBrush}" VerticalAlignment="Center"/>
                 </StackPanel>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="UpdateAvailableText" Text="Update available!" FontSize="11" Foreground="#52D17C" VerticalAlignment="Center" Margin="0,0,8,0" Visibility="Collapsed"/>
                     <ui:Button x:Name="GitHubButton" Icon="{ui:SymbolIcon Globe24}" Appearance="Transparent" Padding="8" Margin="0,0,4,0" ToolTip="GitHub" Click="GitHubButton_Click"/>
                     <ui:Button x:Name="CloseButton" Icon="{ui:SymbolIcon Dismiss24}" Appearance="Transparent" Padding="8" ToolTip="Close" Click="CloseButton_Click"/>
                 </StackPanel>
