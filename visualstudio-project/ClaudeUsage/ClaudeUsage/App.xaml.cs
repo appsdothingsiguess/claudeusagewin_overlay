@@ -1,13 +1,11 @@
-using System.Windows.Controls;
 using System.Windows.Threading;
 using ClaudeUsage.Helpers;
 using ClaudeUsage.Models;
 using ClaudeUsage.Services;
-using Wpf.Ui.Appearance;
-using Wpf.Ui.Controls;
 using Svg;
-using Forms = System.Windows.Forms;
+using Wpf.Ui.Appearance;
 using Drawing = System.Drawing;
+using Forms = System.Windows.Forms;
 
 namespace ClaudeUsage;
 
@@ -267,11 +265,16 @@ public partial class App : System.Windows.Application
         return Drawing.Icon.FromHandle(bitmap.GetHicon());
     }
 
-    private Drawing.Color GetColorForUsage(double utilization)
+    private Drawing.Color GetColorForUsageElapsed(double utilizationPercent, double elapsedPercent)
     {
-        if (utilization >= 90) return Drawing.Color.FromArgb(239, 68, 68);     // Red
-        if (utilization >= 70) return Drawing.Color.FromArgb(234, 179, 8);     // Yellow
-        return Drawing.Color.FromArgb(34, 197, 94);                             // Green
+        var adjustedUtilization = double.Max(0, utilizationPercent - 10) / 0.9;
+        var adjustedElapsed = double.Max(1, elapsedPercent);
+        var ratio = adjustedUtilization / adjustedElapsed;
+        if (ratio > 1.1 || adjustedUtilization > 95)
+            return Drawing.Color.FromArgb(239, 68, 68); // Red — over pace
+        if (ratio < 0.9)
+            return Drawing.Color.FromArgb(34, 197, 94); // Green — under pace
+        return Drawing.Color.FromArgb(234, 179, 8);     // Yellow — on track
     }
 
     private void UpdateTrayIconError()
@@ -289,21 +292,20 @@ public partial class App : System.Windows.Application
     private void OnThemeChanged(Wpf.Ui.Appearance.ApplicationTheme currentTheme, System.Windows.Media.Color systemAccent)
     {
         // Refresh the icon with current usage data to apply new theme colors
-        if (_lastUsageData != null)
-        {
-            var sessionUtilization = _lastUsageData.FiveHour?.Utilization ?? 0;
-            var maxUtilization = Math.Max(
-                sessionUtilization,
-                _lastUsageData.SevenDay?.Utilization ?? 0
-            );
-            UpdateTrayIcon((int)sessionUtilization, maxUtilization);
-        }
+        UpdateTrayIcon();
     }
 
-    private void UpdateTrayIcon(int percentage, double utilization)
+    private void UpdateTrayIcon()
     {
+        if (_lastUsageData == null) return;
+
+        var window = _lastUsageData.FiveHour;
+        var utilizationPercent = window?.Utilization ?? 0;
+        var elapsedPercent = window?.GetElapsedPercent(5 * 3600) ?? 0;
+        var color = GetColorForUsageElapsed(utilizationPercent, elapsedPercent);
+
         var oldIcon = _currentIcon;
-        _currentIcon = CreateUsageIcon(percentage, GetColorForUsage(utilization));
+        _currentIcon = CreateUsageIcon((int)utilizationPercent, color);
         _notifyIcon!.Icon = _currentIcon;
         oldIcon?.Dispose();
     }
@@ -446,14 +448,7 @@ public partial class App : System.Windows.Application
         _lastUsageData = usage;
         _lastUpdated = DateTime.Now;
 
-        // Update icon based on usage (utilization is already a percentage, e.g. 8.0 = 8%)
-        var sessionUtilization = usage.FiveHour?.Utilization ?? 0;
-        var maxUtilization = Math.Max(
-            sessionUtilization,
-            usage.SevenDay?.Utilization ?? 0
-        );
-
-        UpdateTrayIcon((int)sessionUtilization, maxUtilization);
+        UpdateTrayIcon();
 
         // Update tooltip
         var sessionPct = usage.FiveHour?.UtilizationPercent ?? 0;
