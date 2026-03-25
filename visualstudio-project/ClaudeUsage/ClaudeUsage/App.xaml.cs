@@ -13,6 +13,8 @@ public partial class App : System.Windows.Application
 {
     private TrayIconWithContextMenu? _trayIcon;
     private TrayIconWithContextMenu? _weeklyTrayIcon;
+    private TrayIconWithContextMenu? _sonnetTrayIcon;
+    private TrayIconWithContextMenu? _overageTrayIcon;
     private MainWindow? _mainWindow;
     private DispatcherTimer? _refreshTimer;
     private UsageData? _lastUsageData;
@@ -25,6 +27,8 @@ public partial class App : System.Windows.Application
 
     private Drawing.Icon? _currentIcon;
     private Drawing.Icon? _weeklyIcon;
+    private Drawing.Icon? _sonnetIcon;
+    private Drawing.Icon? _overageIcon;
 
     // SVG document cache — avoids re-parsing embedded resources on every icon update
     private readonly Dictionary<string, SvgDocument?> _svgCache = new();
@@ -284,6 +288,8 @@ public partial class App : System.Windows.Application
     {
         var oldIcon = _currentIcon;
         var oldWeeklyIcon = _weeklyIcon;
+        var oldSonnetIcon = _sonnetIcon;
+        var oldOverageIcon = _overageIcon;
         var svgDoc = LoadSvgFromResource("error.svg");
         if (svgDoc != null)
         {
@@ -291,9 +297,21 @@ public partial class App : System.Windows.Application
             _trayIcon!.UpdateIcon(_currentIcon.Handle);
             _weeklyIcon = CreateIconFromSvg(svgDoc, Drawing.Color.FromArgb(156, 163, 175));
             _weeklyTrayIcon!.UpdateIcon(_weeklyIcon.Handle);
+            if (_sonnetTrayIcon != null)
+            {
+                _sonnetIcon = CreateIconFromSvg(svgDoc, Drawing.Color.FromArgb(156, 163, 175));
+                _sonnetTrayIcon.UpdateIcon(_sonnetIcon.Handle);
+            }
+            if (_overageTrayIcon != null)
+            {
+                _overageIcon = CreateIconFromSvg(svgDoc, Drawing.Color.FromArgb(156, 163, 175));
+                _overageTrayIcon.UpdateIcon(_overageIcon.Handle);
+            }
         }
         oldIcon?.Dispose();
         oldWeeklyIcon?.Dispose();
+        oldSonnetIcon?.Dispose();
+        oldOverageIcon?.Dispose();
     }
 
     private void OnThemeChanged(Wpf.Ui.Appearance.ApplicationTheme currentTheme, System.Windows.Media.Color systemAccent)
@@ -327,12 +345,41 @@ public partial class App : System.Windows.Application
         _weeklyIcon = CreateUsageIcon((int)weeklyUtilPct, weeklyColor);
         _weeklyTrayIcon!.UpdateIcon(_weeklyIcon.Handle);
         oldWeeklyIcon?.Dispose();
+        
+        // Update sonnet icon (if visible)
+        if (_sonnetTrayIcon != null && StartupHelper.GetShowDetails())
+        {
+            var sonnetWindow = _lastUsageData.Sonnet;
+            var sonnetUtilPct = sonnetWindow?.Utilization ?? 0;
+            var sonnetElapsedPct = sonnetWindow?.GetElapsedPercent(7 * 24 * 3600) ?? 0;
+            var sonnetColor = GetColorForUsageElapsed(sonnetUtilPct, sonnetElapsedPct);
+
+            var oldSonnetIcon = _sonnetIcon;
+            _sonnetIcon = CreateUsageIcon((int)sonnetUtilPct, sonnetColor);
+            _sonnetTrayIcon.UpdateIcon(_sonnetIcon.Handle);
+            oldSonnetIcon?.Dispose();
+        }
+        
+        // Update overage icon (if visible)
+        if (_overageTrayIcon != null && StartupHelper.GetShowDetails() && _lastUsageData.ExtraUsage != null)
+        {
+            var extra = _lastUsageData.ExtraUsage;
+            var overageUtilPct = extra.Utilization ?? 0;
+            var overageColor = GetColorForUsageElapsed(overageUtilPct, 50); // Assume 50% elapsed as baseline
+
+            var oldOverageIcon = _overageIcon;
+            _overageIcon = CreateUsageIcon((int)overageUtilPct, overageColor);
+            _overageTrayIcon.UpdateIcon(_overageIcon.Handle);
+            oldOverageIcon?.Dispose();
+        }
     }
 
 private void CreateTrayIcon()
     {
         _currentIcon = CreateUsageIcon(0, Drawing.Color.FromArgb(156, 163, 175)); // Gray
         _weeklyIcon = CreateUsageIcon(0, Drawing.Color.FromArgb(156, 163, 175)); // Gray
+        _sonnetIcon = CreateUsageIcon(0, Drawing.Color.FromArgb(156, 163, 175));
+        _overageIcon = CreateUsageIcon(0, Drawing.Color.FromArgb(156, 163, 175));
         
         // Create session (5-hour) tray icon
         _trayIcon = new TrayIconWithContextMenu("ClaudeUsage.Session")
@@ -363,6 +410,54 @@ private void CreateTrayIcon()
         _weeklyTrayIcon.Create();
         
         _weeklyTrayIcon.MessageWindow.MouseEventReceived += (s, e) =>
+        {
+            if (e.MouseEvent == MouseEvent.IconLeftMouseUp)
+            {
+                Dispatcher.Invoke(() => ShowPopup());
+            }
+        };
+        
+        // Create sonnet and overage icons (only visible when "Show Details" is enabled)
+        CreateSonnetTrayIcon();
+        CreateOverageTrayIcon();
+        
+        if (!StartupHelper.GetShowDetails())
+        {
+            _sonnetTrayIcon?.Remove();
+            _overageTrayIcon?.Remove();
+        }
+    }
+    
+    private void CreateSonnetTrayIcon()
+    {
+        _sonnetTrayIcon = new TrayIconWithContextMenu("ClaudeUsage.Sonnet")
+        {
+            Icon = _sonnetIcon!.Handle,
+            ToolTip = "Claude Sonnet - Loading..."
+        };
+        
+        _sonnetTrayIcon.Create();
+        
+        _sonnetTrayIcon.MessageWindow.MouseEventReceived += (s, e) =>
+        {
+            if (e.MouseEvent == MouseEvent.IconLeftMouseUp)
+            {
+                Dispatcher.Invoke(() => ShowPopup());
+            }
+        };
+    }
+    
+    private void CreateOverageTrayIcon()
+    {
+        _overageTrayIcon = new TrayIconWithContextMenu("ClaudeUsage.Overage")
+        {
+            Icon = _overageIcon!.Handle,
+            ToolTip = "Claude Overage - Loading..."
+        };
+        
+        _overageTrayIcon.Create();
+        
+        _overageTrayIcon.MessageWindow.MouseEventReceived += (s, e) =>
         {
             if (e.MouseEvent == MouseEvent.IconLeftMouseUp)
             {
@@ -417,8 +512,24 @@ private void CreateTrayIcon()
         {
             var newItem = _showDetailsItem!;
             newItem.Checked = !newItem.Checked;
-            StartupHelper.SetShowDetails(newItem.Checked);
-            Dispatcher.Invoke(() => _mainWindow?.SetShowDetails(newItem.Checked));
+            var showDetails = newItem.Checked;
+            StartupHelper.SetShowDetails(showDetails);
+            
+            if (showDetails)
+            {
+                // Show sonnet and overage icons
+                if (_sonnetTrayIcon == null) CreateSonnetTrayIcon();
+                if (_overageTrayIcon == null) CreateOverageTrayIcon();
+                UpdateTrayIcon();
+            }
+            else
+            {
+                // Hide sonnet and overage icons
+                _sonnetTrayIcon?.Remove();
+                _overageTrayIcon?.Remove();
+            }
+            
+            Dispatcher.Invoke(() => _mainWindow?.SetShowDetails(showDetails));
         })
         {
             Checked = StartupHelper.GetShowDetails()
@@ -534,6 +645,22 @@ private void CreateTrayIcon()
 
         _trayIcon!.UpdateToolTip($"Claude Session\n{LocalizationService.T("tooltip_session", sessionPct, sessionReset)}");
         _weeklyTrayIcon!.UpdateToolTip($"Claude Weekly\n{LocalizationService.T("tooltip_weekly", weeklyPct, weeklyReset)}");
+        
+        // Update sonnet and overage tooltips if visible
+        if (_sonnetTrayIcon != null && StartupHelper.GetShowDetails())
+        {
+            var sonnetPct = usage.Sonnet?.UtilizationPercent ?? 0;
+            var sonnetReset = usage.Sonnet?.TimeUntilReset ?? "N/A";
+            _sonnetTrayIcon.UpdateToolTip($"Claude Sonnet\n{sonnetPct}% used\nReset: {sonnetReset}");
+        }
+        
+        if (_overageTrayIcon != null && StartupHelper.GetShowDetails() && usage.ExtraUsage != null)
+        {
+            var overagePct = usage.ExtraUsage.UtilizationPercent;
+            var overageUsed = usage.ExtraUsage.UsedDollars;
+            var overageLimit = usage.ExtraUsage.LimitDollars;
+            _overageTrayIcon.UpdateToolTip($"Claude Overage\n{overagePct}% used\n${overageUsed:F2} / ${overageLimit:F2}");
+        }
 
         // Update popup if visible
         if (_mainWindow?.IsVisible == true)
@@ -549,8 +676,12 @@ private void CreateTrayIcon()
         ApplicationThemeManager.Changed -= OnThemeChanged;
         _trayIcon?.Dispose();
         _weeklyTrayIcon?.Dispose();
+        _sonnetTrayIcon?.Dispose();
+        _overageTrayIcon?.Dispose();
         _currentIcon?.Dispose();
         _weeklyIcon?.Dispose();
+        _sonnetIcon?.Dispose();
+        _overageIcon?.Dispose();
         base.OnExit(e);
     }
 }
