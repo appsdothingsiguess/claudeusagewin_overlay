@@ -2,7 +2,6 @@ using System.Runtime.InteropServices;
 using ClaudeUsage.Helpers;
 using ClaudeUsage.Models;
 using ClaudeUsage.Services;
-using Svg;
 using H.NotifyIcon.Core;
 using Drawing = System.Drawing;
 
@@ -36,9 +35,6 @@ public class App
     private Drawing.Icon? _weeklyIcon;
     private Drawing.Icon? _sonnetIcon;
     private Drawing.Icon? _overageIcon;
-
-    // SVG document cache — avoids re-parsing embedded resources on every icon update
-    private readonly Dictionary<string, SvgDocument?> _svgCache = new();
 
     // Adaptive polling
     private const int PollNormal = 420;       // 7 min
@@ -154,88 +150,6 @@ public class App
 
     private Drawing.Icon CreateUsageIcon(int percentage, Drawing.Color bgColor)
     {
-        // Try to load SVG icon from embedded resources
-        var resourceName = GetSvgResourceName(percentage);
-        var svgDoc = LoadSvgFromResource(resourceName);
-
-        if (svgDoc != null)
-        {
-            return CreateIconFromSvg(svgDoc, bgColor);
-        }
-
-        // Fallback to programmatic drawing
-        return CreateFallbackIcon(percentage, bgColor);
-    }
-
-    private string GetSvgResourceName(int percentage)
-    {
-        // Available icons: 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 99, 100
-        int iconValue;
-        if (percentage >= 100) iconValue = 100;
-        else if (percentage >= 99) iconValue = 99;
-        else if (percentage >= 95) iconValue = 95;
-        else if (percentage < 10) iconValue = 0; // Use 0 for 0-9% (sunglasses)
-        else iconValue = (percentage / 10) * 10; // Round down to nearest 10
-
-        return $"{iconValue}.svg";
-    }
-
-    private SvgDocument? LoadSvgFromResource(string fileName)
-    {
-        if (_svgCache.TryGetValue(fileName, out var cached))
-            return cached;
-
-        var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-        var resourceNames = assembly.GetManifestResourceNames();
-        var resourceName = resourceNames.FirstOrDefault(r => r.EndsWith(fileName));
-
-        if (resourceName == null)
-        {
-            _svgCache[fileName] = null;
-            return null;
-        }
-
-        using var stream = assembly.GetManifestResourceStream(resourceName);
-        if (stream == null)
-        {
-            _svgCache[fileName] = null;
-            return null;
-        }
-
-        var doc = SvgDocument.Open<SvgDocument>(stream);
-        _svgCache[fileName] = doc;
-        return doc;
-    }
-
-    private Drawing.Icon CreateIconFromSvg(SvgDocument svgDoc, Drawing.Color dotColor)
-    {
-        var frameColor = Drawing.Color.White;
-
-        // Path 0: "10" text - use frame color
-        if (svgDoc.Children.Count > 0 && svgDoc.Children[0] is SvgPath textPath)
-        {
-            textPath.Fill = new SvgColourServer(frameColor);
-        }
-
-        // Path 1: Rectangle outline - use frame color
-        if (svgDoc.Children.Count > 1 && svgDoc.Children[1] is SvgPath rectPath)
-        {
-            rectPath.Fill = new SvgColourServer(frameColor);
-        }
-
-        // Circle (index 2): Dot - use usage color
-        if (svgDoc.Children.Count > 2 && svgDoc.Children[2] is SvgCircle dotCircle)
-        {
-            dotCircle.Fill = new SvgColourServer(dotColor);
-        }
-
-        // Render to bitmap
-        using var bitmap = svgDoc.Draw(32, 32);
-        return Drawing.Icon.FromHandle(bitmap.GetHicon());
-    }
-
-    private Drawing.Icon CreateFallbackIcon(int percentage, Drawing.Color bgColor)
-    {
         const int size = 32;
         const int cornerRadius = 6;
 
@@ -284,32 +198,32 @@ public class App
 
     private void UpdateTrayIconError()
     {
+        var gray = Drawing.Color.FromArgb(156, 163, 175);
+
         var oldIcon = _currentIcon;
-        var oldWeeklyIcon = _weeklyIcon;
-        var oldSonnetIcon = _sonnetIcon;
-        var oldOverageIcon = _overageIcon;
-        var svgDoc = LoadSvgFromResource("error.svg");
-        if (svgDoc != null)
-        {
-            _currentIcon = CreateIconFromSvg(svgDoc, Drawing.Color.FromArgb(156, 163, 175));
-            _trayIcon!.UpdateIcon(_currentIcon.Handle);
-            _weeklyIcon = CreateIconFromSvg(svgDoc, Drawing.Color.FromArgb(156, 163, 175));
-            _weeklyTrayIcon!.UpdateIcon(_weeklyIcon.Handle);
-            if (_sonnetTrayIcon != null)
-            {
-                _sonnetIcon = CreateIconFromSvg(svgDoc, Drawing.Color.FromArgb(156, 163, 175));
-                _sonnetTrayIcon.UpdateIcon(_sonnetIcon.Handle);
-            }
-            if (_overageTrayIcon != null)
-            {
-                _overageIcon = CreateIconFromSvg(svgDoc, Drawing.Color.FromArgb(156, 163, 175));
-                _overageTrayIcon.UpdateIcon(_overageIcon.Handle);
-            }
-        }
+        _currentIcon = CreateUsageIcon(0, gray);
+        _trayIcon!.UpdateIcon(_currentIcon.Handle);
         oldIcon?.Dispose();
+
+        var oldWeeklyIcon = _weeklyIcon;
+        _weeklyIcon = CreateUsageIcon(0, gray);
+        _weeklyTrayIcon!.UpdateIcon(_weeklyIcon.Handle);
         oldWeeklyIcon?.Dispose();
-        oldSonnetIcon?.Dispose();
-        oldOverageIcon?.Dispose();
+
+        if (_sonnetTrayIcon != null)
+        {
+            var oldSonnetIcon = _sonnetIcon;
+            _sonnetIcon = CreateUsageIcon(0, gray);
+            _sonnetTrayIcon.UpdateIcon(_sonnetIcon.Handle);
+            oldSonnetIcon?.Dispose();
+        }
+        if (_overageTrayIcon != null)
+        {
+            var oldOverageIcon = _overageIcon;
+            _overageIcon = CreateUsageIcon(0, gray);
+            _overageTrayIcon.UpdateIcon(_overageIcon.Handle);
+            oldOverageIcon?.Dispose();
+        }
     }
 
     private void UpdateTrayIcon()
