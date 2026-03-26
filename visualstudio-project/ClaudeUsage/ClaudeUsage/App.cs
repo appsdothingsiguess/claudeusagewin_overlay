@@ -364,7 +364,8 @@ public class App
         new(LocalizationService.T("exit"), (s, e) =>
         {
             RemoveAllTrayIcons();
-            PostQuitMessage(0);
+            Shutdown();
+            Environment.Exit(0);
         });
 
     private void CreateWeeklyContextMenu()
