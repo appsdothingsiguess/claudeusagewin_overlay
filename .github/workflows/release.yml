@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+
+      - name: Get current version
+        id: current
+        shell: bash
+        run: |
+          version=$(grep -oP '(?<=<Version>)[^<]+' ClaudeUsage/ClaudeUsage.csproj)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version
+        id: bump
+        shell: bash
+        run: |
+          IFS='.' read -r major minor patch <<< "${{ steps.current.outputs.version }}"
+          case "${{ inputs.bump }}" in
+            major) major=$((major + 1)); minor=0; patch=0 ;;
+            minor) minor=$((minor + 1)); patch=0 ;;
+            patch) patch=$((patch + 1)) ;;
+          esac
+          new_version="${major}.${minor}.${patch}"
+          echo "version=$new_version" >> "$GITHUB_OUTPUT"
+
+      - name: Update version in csproj
+        shell: bash
+        run: |
+          sed -i "s|<Version>${{ steps.current.outputs.version }}</Version>|<Version>${{ steps.bump.outputs.version }}</Version>|" ClaudeUsage/ClaudeUsage.csproj
+
+      - name: Publish
+        run: dotnet publish ClaudeUsage/ClaudeUsage.csproj -c Release -r win-x64
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release create "v${{ steps.bump.outputs.version }}"
+          "ClaudeUsage/bin/Release/net10.0-windows/win-x64/publish/ClaudeUsage.exe"
+          --title "v${{ steps.bump.outputs.version }}"
+          --generate-notes
+
+      - name: Commit version bump
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ClaudeUsage/ClaudeUsage.csproj
+          git commit -m "Bump version to ${{ steps.bump.outputs.version }}"
+          git push
