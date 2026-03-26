@@ -182,10 +182,15 @@ public class App
         g.FillRectangle(Drawing.Brushes.Black, dot);
     }
 
-    private Drawing.Icon CreateUsageIcon(int percentage, Drawing.Color bgColor, double elapsedPct = 0)
+    /// <summary>
+    /// Renders a tray icon with the given shape, percentage text, and elapsed indicator.
+    /// The drawShape delegate receives (Graphics, SolidBrush, Rectangle) and fills the icon shape.
+    /// </summary>
+    private Drawing.Icon RenderIcon(int percentage, Drawing.Color bgColor, double elapsedPct,
+        Action<Drawing.Graphics, Drawing.SolidBrush, Drawing.Rectangle> drawShape)
     {
         const int size = 32;
-        const int cornerRadius = 10;
+        var rect = new Drawing.Rectangle(0, 0, size - 2, size - 2);
 
         using var bitmap = new Drawing.Bitmap(size, size);
         using var g = Drawing.Graphics.FromImage(bitmap);
@@ -194,22 +199,12 @@ public class App
         g.TextRenderingHint = Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         g.Clear(Drawing.Color.Transparent);
 
-        // Draw rounded rectangle background (full size, no border)
         using var bgBrush = new Drawing.SolidBrush(bgColor);
-        using var path = new Drawing.Drawing2D.GraphicsPath();
-        var rect = new Drawing.Rectangle(0, 0, size - 2, size - 2);
-        path.AddArc(rect.X, rect.Y, cornerRadius, cornerRadius, 180, 90);
-        path.AddArc(rect.Right - cornerRadius, rect.Y, cornerRadius, cornerRadius, 270, 90);
-        path.AddArc(rect.Right - cornerRadius, rect.Bottom - cornerRadius, cornerRadius, cornerRadius, 0, 90);
-        path.AddArc(rect.X, rect.Bottom - cornerRadius, cornerRadius, cornerRadius, 90, 90);
-        path.CloseFigure();
-        g.FillPath(bgBrush, path);
+        drawShape(g, bgBrush, rect);
 
         DrawElapsedDot(g, size, elapsedPct);
 
-        // Draw percentage number centered
         using var textBrush = new Drawing.SolidBrush(Drawing.Color.White);
-
         var text = percentage.ToString();
         var textSize = g.MeasureString(text, IconFont);
         var textX = (rect.Width - textSize.Width) / 2 + 1;
@@ -223,147 +218,70 @@ public class App
         return icon;
     }
 
-    private Drawing.Icon CreateWeeklyIcon(int percentage, Drawing.Color color, double elapsedPct = 0)
-    {
-        const int size = 32;
-        const int cornerRadius = 1;
-        const int notchRadius = 3;
-
-        using var bitmap = new Drawing.Bitmap(size, size);
-        using var g = Drawing.Graphics.FromImage(bitmap);
-
-        g.SmoothingMode = Drawing.Drawing2D.SmoothingMode.HighQuality;
-        g.TextRenderingHint = Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-        g.Clear(Drawing.Color.Transparent);
-
-        // Build rounded rectangle, then subtract semicircle notches on left and right
-        using var shape = new Drawing.Drawing2D.GraphicsPath();
-        var rect = new Drawing.Rectangle(0, 0, size - 2, size - 2);
-        shape.AddArc(rect.X, rect.Y, cornerRadius, cornerRadius, 180, 90);
-        shape.AddArc(rect.Right - cornerRadius, rect.Y, cornerRadius, cornerRadius, 270, 90);
-        shape.AddArc(rect.Right - cornerRadius, rect.Bottom - cornerRadius, cornerRadius, cornerRadius, 0, 90);
-        shape.AddArc(rect.X, rect.Bottom - cornerRadius, cornerRadius, cornerRadius, 90, 90);
-        shape.CloseFigure();
-
-        // Left notch (semicircle facing right, centered vertically)
-        using var leftNotch = new Drawing.Drawing2D.GraphicsPath();
-        var midY = rect.Y + rect.Height / 2;
-        leftNotch.AddArc(rect.X - notchRadius, midY - notchRadius, notchRadius * 2, notchRadius * 2, 270, 180);
-        leftNotch.CloseFigure();
-
-        // Right notch (semicircle facing left, centered vertically)
-        using var rightNotch = new Drawing.Drawing2D.GraphicsPath();
-        rightNotch.AddArc(rect.Right - notchRadius, midY - notchRadius, notchRadius * 2, notchRadius * 2, 90, 180);
-        rightNotch.CloseFigure();
-
-        // Combine: rounded rect minus notches
-        using var region = new Drawing.Region(shape);
-        region.Exclude(leftNotch);
-        region.Exclude(rightNotch);
-
-        using var bgBrush = new Drawing.SolidBrush(color);
-        g.FillRegion(bgBrush, region);
-
-        DrawElapsedDot(g, size, elapsedPct);
-
-        // Draw percentage number centered
-        using var textBrush = new Drawing.SolidBrush(Drawing.Color.White);
-        var text = percentage.ToString();
-        var textSize = g.MeasureString(text, IconFont);
-        var textX = (rect.Width - textSize.Width) / 2 + 1;
-        var textY = (rect.Height - textSize.Height) / 2 + 1;
-        g.DrawString(text, IconFont, textBrush, textX, textY);
-
-        var hIcon = bitmap.GetHicon();
-        var icon = (Drawing.Icon)Drawing.Icon.FromHandle(hIcon).Clone();
-        DestroyIcon(hIcon);
-        return icon;
-    }
-
-    private Drawing.Icon CreateSonnetIcon(int percentage, Drawing.Color color, double elapsedPct = 0)
-    {
-        const int size = 32;
-        var s = size - 2; // drawable area
-        var inset = 4;    // how far the left/right points indent (wide top/bottom)
-
-        using var bitmap = new Drawing.Bitmap(size, size);
-        using var g = Drawing.Graphics.FromImage(bitmap);
-
-        g.SmoothingMode = Drawing.Drawing2D.SmoothingMode.HighQuality;
-        g.TextRenderingHint = Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-        g.Clear(Drawing.Color.Transparent);
-
-        // Wide hexagon: wide top/bottom, narrow left/right points
-        var midY = s / 2;
-        var points = new Drawing.PointF[]
+    private Drawing.Icon CreateUsageIcon(int percentage, Drawing.Color bgColor, double elapsedPct = 0) =>
+        RenderIcon(percentage, bgColor, elapsedPct, (g, brush, rect) =>
         {
-            new(inset, 0),          // top-left
-            new(s - inset, 0),      // top-right
-            new(s, midY),           // right
-            new(s - inset, s),      // bottom-right
-            new(inset, s),          // bottom-left
-            new(0, midY),           // left
-        };
+            const int cornerRadius = 10;
+            using var path = new Drawing.Drawing2D.GraphicsPath();
+            path.AddArc(rect.X, rect.Y, cornerRadius, cornerRadius, 180, 90);
+            path.AddArc(rect.Right - cornerRadius, rect.Y, cornerRadius, cornerRadius, 270, 90);
+            path.AddArc(rect.Right - cornerRadius, rect.Bottom - cornerRadius, cornerRadius, cornerRadius, 0, 90);
+            path.AddArc(rect.X, rect.Bottom - cornerRadius, cornerRadius, cornerRadius, 90, 90);
+            path.CloseFigure();
+            g.FillPath(brush, path);
+        });
 
-        using var bgBrush = new Drawing.SolidBrush(color);
-        g.FillPolygon(bgBrush, points);
-
-        DrawElapsedDot(g, size, elapsedPct);
-
-        // Draw percentage number centered
-        using var textBrush = new Drawing.SolidBrush(Drawing.Color.White);
-        var text = percentage.ToString();
-        var textSize = g.MeasureString(text, IconFont);
-        var textX = (s - textSize.Width) / 2 + 1;
-        var textY = (s - textSize.Height) / 2 + 1;
-        g.DrawString(text, IconFont, textBrush, textX, textY);
-
-        var hIcon = bitmap.GetHicon();
-        var icon = (Drawing.Icon)Drawing.Icon.FromHandle(hIcon).Clone();
-        DestroyIcon(hIcon);
-        return icon;
-    }
-
-    private Drawing.Icon CreateOverageIcon(int percentage, Drawing.Color color, double elapsedPct = 0)
-    {
-        const int size = 32;
-        var s = size - 2;
-        var slant = 5; // vertical shear amount
-
-        using var bitmap = new Drawing.Bitmap(size, size);
-        using var g = Drawing.Graphics.FromImage(bitmap);
-
-        g.SmoothingMode = Drawing.Drawing2D.SmoothingMode.HighQuality;
-        g.TextRenderingHint = Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-        g.Clear(Drawing.Color.Transparent);
-
-        // Parallelogram: right side raised (slants upward to the right)
-        var points = new Drawing.PointF[]
+    private Drawing.Icon CreateWeeklyIcon(int percentage, Drawing.Color color, double elapsedPct = 0) =>
+        RenderIcon(percentage, color, elapsedPct, (g, brush, rect) =>
         {
-            new(0, slant),          // top-left
-            new(s, 0),             // top-right (raised)
-            new(s, s - slant),     // bottom-right (raised)
-            new(0, s),             // bottom-left
-        };
+            const int cornerRadius = 1;
+            const int notchRadius = 3;
 
-        using var bgBrush = new Drawing.SolidBrush(color);
-        g.FillPolygon(bgBrush, points);
+            using var shape = new Drawing.Drawing2D.GraphicsPath();
+            shape.AddArc(rect.X, rect.Y, cornerRadius, cornerRadius, 180, 90);
+            shape.AddArc(rect.Right - cornerRadius, rect.Y, cornerRadius, cornerRadius, 270, 90);
+            shape.AddArc(rect.Right - cornerRadius, rect.Bottom - cornerRadius, cornerRadius, cornerRadius, 0, 90);
+            shape.AddArc(rect.X, rect.Bottom - cornerRadius, cornerRadius, cornerRadius, 90, 90);
+            shape.CloseFigure();
 
-        // Draw percentage number centered
-        using var textBrush = new Drawing.SolidBrush(Drawing.Color.White);
-        var text = percentage.ToString();
-        var textSize = g.MeasureString(text, IconFont);
-        var textX = (s - textSize.Width) / 2 + 1;
-        var textY = (s - textSize.Height) / 2 + 1;
-        g.DrawString(text, IconFont, textBrush, textX, textY);
+            using var leftNotch = new Drawing.Drawing2D.GraphicsPath();
+            var midY = rect.Y + rect.Height / 2;
+            leftNotch.AddArc(rect.X - notchRadius, midY - notchRadius, notchRadius * 2, notchRadius * 2, 270, 180);
+            leftNotch.CloseFigure();
 
-        DrawElapsedDot(g, size, elapsedPct);
+            using var rightNotch = new Drawing.Drawing2D.GraphicsPath();
+            rightNotch.AddArc(rect.Right - notchRadius, midY - notchRadius, notchRadius * 2, notchRadius * 2, 90, 180);
+            rightNotch.CloseFigure();
 
-        var hIcon = bitmap.GetHicon();
-        var icon = (Drawing.Icon)Drawing.Icon.FromHandle(hIcon).Clone();
-        DestroyIcon(hIcon);
-        return icon;
-    }
+            using var region = new Drawing.Region(shape);
+            region.Exclude(leftNotch);
+            region.Exclude(rightNotch);
+            g.FillRegion(brush, region);
+        });
+
+    private Drawing.Icon CreateSonnetIcon(int percentage, Drawing.Color color, double elapsedPct = 0) =>
+        RenderIcon(percentage, color, elapsedPct, (g, brush, rect) =>
+        {
+            var s = rect.Width;
+            var inset = 4;
+            var midY = s / 2;
+            g.FillPolygon(brush, new Drawing.PointF[]
+            {
+                new(inset, 0), new(s - inset, 0), new(s, midY),
+                new(s - inset, s), new(inset, s), new(0, midY),
+            });
+        });
+
+    private Drawing.Icon CreateOverageIcon(int percentage, Drawing.Color color, double elapsedPct = 0) =>
+        RenderIcon(percentage, color, elapsedPct, (g, brush, rect) =>
+        {
+            var s = rect.Width;
+            var slant = 5;
+            g.FillPolygon(brush, new Drawing.PointF[]
+            {
+                new(0, slant), new(s, 0), new(s, s - slant), new(0, s),
+            });
+        });
 
     private Drawing.Color GetColorForUsageElapsed(double utilizationPercent, double elapsedPercent)
     {
@@ -409,8 +327,6 @@ public class App
     {
         if (_lastUsageData == null) return;
 
-        var showDetails = StartupHelper.GetShowDetails();
-
         // Update session icon
         var sessionWindow = _lastUsageData.FiveHour;
         var sessionUtilPct = sessionWindow?.Utilization ?? 0;
@@ -425,8 +341,8 @@ public class App
         SwapIcon(ref _weeklyIcon, ref _lastWeeklyState, _weeklyTrayIcon!,
             (int)weeklyUtilPct, GetColorForUsageElapsed(weeklyUtilPct, weeklyElapsedPct), weeklyElapsedPct, CreateWeeklyIcon);
 
-        // Update sonnet icon (if visible)
-        if (_sonnetTrayIcon != null && showDetails)
+        // Update sonnet icon (null check is sufficient — icon is only created when details are shown)
+        if (_sonnetTrayIcon != null)
         {
             var sonnetWindow = _lastUsageData.Sonnet;
             var sonnetUtilPct = sonnetWindow?.Utilization ?? 0;
@@ -435,8 +351,8 @@ public class App
                 (int)sonnetUtilPct, GetColorForUsageElapsed(sonnetUtilPct, sonnetElapsedPct), sonnetElapsedPct, CreateSonnetIcon);
         }
 
-        // Update overage icon (if visible)
-        if (_overageTrayIcon != null && showDetails && _lastUsageData.ExtraUsage != null)
+        // Update overage icon
+        if (_overageTrayIcon != null && _lastUsageData.ExtraUsage != null)
         {
             var overageUtilPct = _lastUsageData.ExtraUsage.Utilization ?? 0;
             SwapIcon(ref _overageIcon, ref _lastOverageState, _overageTrayIcon,
@@ -456,8 +372,6 @@ public class App
     {
         _currentIcon = CreateUsageIcon(0, ColorGray);
         _weeklyIcon = CreateWeeklyIcon(0, ColorGray);
-        _sonnetIcon = CreateSonnetIcon(0, ColorGray);
-        _overageIcon = CreateOverageIcon(0, ColorGray);
 
         // Create session (5-hour) tray icon
         _trayIcon = new TrayIconWithContextMenu("ClaudeUsage.Session")
@@ -489,9 +403,10 @@ public class App
 
     private void CreateSonnetTrayIcon()
     {
+        _sonnetIcon ??= CreateSonnetIcon(0, ColorGray);
         _sonnetTrayIcon = new TrayIconWithContextMenu("ClaudeUsage.Sonnet")
         {
-            Icon = _sonnetIcon!.Handle,
+            Icon = _sonnetIcon.Handle,
             ToolTip = "Claude Sonnet - Loading..."
         };
 
@@ -500,9 +415,10 @@ public class App
 
     private void CreateOverageTrayIcon()
     {
+        _overageIcon ??= CreateOverageIcon(0, ColorGray);
         _overageTrayIcon = new TrayIconWithContextMenu("ClaudeUsage.Overage")
         {
-            Icon = _overageIcon!.Handle,
+            Icon = _overageIcon.Handle,
             ToolTip = "Claude Overage - Loading..."
         };
         _overageTrayIcon.Create();
@@ -631,12 +547,6 @@ public class App
 
     public async Task RefreshUsageData()
     {
-        if (!CredentialService.CredentialsExist())
-        {
-            HandleFetchError("no_credentials");
-            return;
-        }
-
         var usage = await UsageApiService.GetUsageAsync();
 
         if (usage == null)
@@ -670,20 +580,19 @@ public class App
         _weeklyTrayIcon!.UpdateToolTip($"Claude Weekly\n{LocalizationService.T("tooltip_weekly", weeklyPct, weeklyReset)}");
 
         // Update sonnet and overage tooltips if visible
-        var showDetails = StartupHelper.GetShowDetails();
-        if (_sonnetTrayIcon != null && showDetails)
+        if (_sonnetTrayIcon != null)
         {
             var sonnetPct = usage.Sonnet?.UtilizationPercent ?? 0;
             var sonnetReset = usage.Sonnet?.TimeUntilReset ?? "N/A";
-            _sonnetTrayIcon.UpdateToolTip($"Claude Sonnet\n{sonnetPct}% used\nReset: {sonnetReset}");
+            _sonnetTrayIcon.UpdateToolTip($"Claude Sonnet\n{LocalizationService.T("tooltip_session", sonnetPct, sonnetReset)}");
         }
 
-        if (_overageTrayIcon != null && showDetails && usage.ExtraUsage != null)
+        if (_overageTrayIcon != null && usage.ExtraUsage != null)
         {
             var overagePct = usage.ExtraUsage.UtilizationPercent;
             var overageUsed = usage.ExtraUsage.UsedDollars;
             var overageLimit = usage.ExtraUsage.LimitDollars;
-            _overageTrayIcon.UpdateToolTip($"Claude Overage\n{overagePct}% used\n${overageUsed:F2} / ${overageLimit:F2}");
+            _overageTrayIcon.UpdateToolTip($"Claude Overage\n{overagePct}% | ${overageUsed:F2} / ${overageLimit:F2}");
         }
     }
 }

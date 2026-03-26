@@ -25,19 +25,6 @@ public class CredentialService
         );
     }
 
-    private static async Task<bool> IsWslAvailableAsync()
-    {
-        try
-        {
-            var task = Task.Run(() => Directory.Exists(@"\\wsl$") || Directory.Exists(@"\\wsl.localhost"));
-            return await task.WaitAsync(TimeSpan.FromSeconds(5));
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private static async Task<string?> FindCredentialsPathAsync()
     {
         // Fast path: return cached path if still valid
@@ -234,18 +221,6 @@ public class CredentialService
         {
             System.Diagnostics.Debug.WriteLine($"Error saving credentials: {ex.Message}");
         }
-    }
-
-    public static bool CredentialsExist()
-    {
-        // Fast synchronous check: cached path or Windows native path
-        if (_cachedCredentialsPath != null && File.Exists(_cachedCredentialsPath))
-        {
-            return true;
-        }
-
-        // Quick fallback: check Windows native path (no WSL scan, avoids blocking)
-        return File.Exists(GetWindowsNativePath());
     }
 
 }
