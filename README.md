@@ -1,12 +1,15 @@
 # Claude Usage Monitor for Windows
 
-Monitor your Claude Code rate limits in real time right from your Windows system tray.
+> [!NOTE]
+> Forked from https://github.com/sr-kai/claudeusagewin but with WinForms and WPF stripped out so we can use NativeAOT. There is no longer a GUI, only system tray icons.
+
+Monitor Claude Code from your Windows system tray.
 
 A native Windows tray app that shows your Claude usage at a glance.
 
-Lightweight single EXE, no installation, no Electron, no Python. Works with both **Claude Code native for Windows** and **Claude Code in WSL**.
+Lightweight single EXE, no installation, no Electron, no Python.
 
-Rate limits are shared across claude.ai, Claude Code, and its IDE extensions, so you always know how much of your session and weekly limits you have left.
+Works with **Claude Code native for Windows** or **Claude Code in WSL**.
 
 ![Claude Usage Screenshot](image.png)
 
@@ -27,12 +30,11 @@ Rate limits are shared across claude.ai, Claude Code, and its IDE extensions, so
 ## Requirements
 
 - Windows 10 or Windows 11 (64-bit)
-- [.NET 10.0 Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)
 - Claude Code installed and logged in (native Windows CLI, WSL, VS Code extension, or JetBrains plugin — any variant works). The app reads the OAuth token that Claude Code stores locally (`~/.claude/.credentials.json`).
 
 ## Quick Start
 
-No build tools required. Download the latest `ClaudeUsage.exe` from the [Releases](https://github.com/sr-kai/claudeusagewin/releases) page, place it wherever you like, and run it.
+No build tools required. Download the latest `ClaudeUsage.exe` from the [Releases](https://github.com/kaydensigh/claudeusagewin/releases) page, place it wherever you like, and run it.
 
 ## How to Use
 
