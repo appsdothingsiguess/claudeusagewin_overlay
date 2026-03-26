@@ -23,7 +23,6 @@ public partial class App : System.Windows.Application
     private PopupMenu? _weeklyContextMenu;
     private PopupMenuItem? _launchAtLoginItem;
     private PopupMenuItem? _showDetailsItem;
-    private DateTime _lastDeactivated;
 
     private Drawing.Icon? _currentIcon;
     private Drawing.Icon? _weeklyIcon;
@@ -65,7 +64,6 @@ public partial class App : System.Windows.Application
         _mainWindow.SetShowDetails(StartupHelper.GetShowDetails());
         _mainWindow.Deactivated += (s, args) =>
         {
-            _lastDeactivated = DateTime.Now;
             _mainWindow.HideWithAnimation();
         };
 
@@ -391,14 +389,6 @@ private void CreateTrayIcon()
         CreateContextMenu();
         _trayIcon.Create();
         
-        _trayIcon.MessageWindow.MouseEventReceived += (s, e) =>
-        {
-            if (e.MouseEvent == MouseEvent.IconLeftMouseUp)
-            {
-                Dispatcher.Invoke(() => ShowPopup());
-            }
-        };
-        
         // Create weekly tray icon
         _weeklyTrayIcon = new TrayIconWithContextMenu("ClaudeUsage.Weekly")
         {
@@ -408,14 +398,6 @@ private void CreateTrayIcon()
         
         CreateWeeklyContextMenu();
         _weeklyTrayIcon.Create();
-        
-        _weeklyTrayIcon.MessageWindow.MouseEventReceived += (s, e) =>
-        {
-            if (e.MouseEvent == MouseEvent.IconLeftMouseUp)
-            {
-                Dispatcher.Invoke(() => ShowPopup());
-            }
-        };
         
         // Create sonnet and overage icons (only visible when "Show Details" is enabled)
         CreateSonnetTrayIcon();
@@ -437,14 +419,6 @@ private void CreateTrayIcon()
         };
         
         _sonnetTrayIcon.Create();
-        
-        _sonnetTrayIcon.MessageWindow.MouseEventReceived += (s, e) =>
-        {
-            if (e.MouseEvent == MouseEvent.IconLeftMouseUp)
-            {
-                Dispatcher.Invoke(() => ShowPopup());
-            }
-        };
     }
     
     private void CreateOverageTrayIcon()
@@ -455,15 +429,7 @@ private void CreateTrayIcon()
             ToolTip = "Claude Overage - Loading..."
         };
         
-        _overageTrayIcon.Create();
-        
-        _overageTrayIcon.MessageWindow.MouseEventReceived += (s, e) =>
-        {
-            if (e.MouseEvent == MouseEvent.IconLeftMouseUp)
-            {
-                Dispatcher.Invoke(() => ShowPopup());
-            }
-        };
+_overageTrayIcon.Create();
     }
     
     private void CreateWeeklyContextMenu()
@@ -582,21 +548,6 @@ private void CreateTrayIcon()
         };
 
         _trayIcon!.ContextMenu = _contextMenu;
-    }
-
-    private void ShowPopup()
-    {
-        if (_mainWindow == null) return;
-
-        // If window was just closed by clicking tray icon, don't reopen it
-        // (the click causes Deactivated which hides it, then this runs)
-        if ((DateTime.Now - _lastDeactivated).TotalMilliseconds < 500)
-        {
-            return;
-        }
-
-        _mainWindow.UpdateUsageData(_lastUsageData, _lastUpdated);
-        _mainWindow.ShowPopup();
     }
 
     public async Task RefreshUsageData()
