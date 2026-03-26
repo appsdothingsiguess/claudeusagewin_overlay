@@ -48,6 +48,7 @@ public class App
     private static readonly Drawing.Color ColorRed = Drawing.Color.FromArgb(239, 68, 68);
     private static readonly Drawing.Color ColorGreen = Drawing.Color.FromArgb(34, 197, 94);
     private static readonly Drawing.Color ColorYellow = Drawing.Color.FromArgb(234, 179, 8);
+    private static readonly Drawing.Color ColorPurple = Drawing.Color.FromArgb(168, 85, 247);
 
     // Window period durations
     private const int FiveHourSeconds = 5 * 3600;
@@ -296,6 +297,23 @@ public class App
     }
 
     /// <summary>
+    /// Returns true if the remaining weekly quota is unreachable given the time left.
+    /// Assumes 9 five-hour sessions per week = 1 weekly quota, and 2 sessions per day max.
+    /// </summary>
+    private static bool IsWeeklyQuotaUnreachable(UsageWindow? window)
+    {
+        if (window?.ResetsAt is not { } resetsAt) return false;
+
+        var daysLeft = (resetsAt - DateTimeOffset.UtcNow).TotalDays;
+        if (daysLeft <= 0) return false;
+
+        var remainingFraction = 1.0 - window.Utilization / 100.0;
+        var consumableFraction = daysLeft * 2.0 / 9.0;
+
+        return remainingFraction > consumableFraction;
+    }
+
+    /// <summary>
     /// Swap a tray icon only if the percentage or color has changed.
     /// </summary>
     private void SwapIcon(ref Drawing.Icon? iconField, ref (int pct, Drawing.Color color, int elapsed) lastState,
@@ -338,8 +356,11 @@ public class App
         var weeklyWindow = _lastUsageData.SevenDay;
         var weeklyUtilPct = weeklyWindow?.Utilization ?? 0;
         var weeklyElapsedPct = weeklyWindow?.GetElapsedPercent(SevenDaySeconds) ?? 0;
+        var weeklyColor = IsWeeklyQuotaUnreachable(weeklyWindow)
+            ? ColorPurple
+            : GetColorForUsageElapsed(weeklyUtilPct, weeklyElapsedPct);
         SwapIcon(ref _weeklyIcon, ref _lastWeeklyState, _weeklyTrayIcon!,
-            (int)weeklyUtilPct, GetColorForUsageElapsed(weeklyUtilPct, weeklyElapsedPct), weeklyElapsedPct, CreateWeeklyIcon);
+            (int)weeklyUtilPct, weeklyColor, weeklyElapsedPct, CreateWeeklyIcon);
 
         // Update sonnet icon (null check is sufficient — icon is only created when details are shown)
         if (_sonnetTrayIcon != null)
@@ -347,8 +368,11 @@ public class App
             var sonnetWindow = _lastUsageData.Sonnet;
             var sonnetUtilPct = sonnetWindow?.Utilization ?? 0;
             var sonnetElapsedPct = sonnetWindow?.GetElapsedPercent(SevenDaySeconds) ?? 0;
+            var sonnetColor = IsWeeklyQuotaUnreachable(sonnetWindow)
+                ? ColorPurple
+                : GetColorForUsageElapsed(sonnetUtilPct, sonnetElapsedPct);
             SwapIcon(ref _sonnetIcon, ref _lastSonnetState, _sonnetTrayIcon,
-                (int)sonnetUtilPct, GetColorForUsageElapsed(sonnetUtilPct, sonnetElapsedPct), sonnetElapsedPct, CreateSonnetIcon);
+                (int)sonnetUtilPct, sonnetColor, sonnetElapsedPct, CreateSonnetIcon);
         }
 
         // Update overage icon
