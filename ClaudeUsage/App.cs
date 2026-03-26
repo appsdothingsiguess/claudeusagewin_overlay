@@ -19,13 +19,11 @@ public class App
     private TrayIconWithContextMenu? _weeklyTrayIcon;
     private TrayIconWithContextMenu? _sonnetTrayIcon;
     private TrayIconWithContextMenu? _overageTrayIcon;
-    // System.Threading.Timer fires on a thread-pool thread, so we capture the
-    // STA SynchronizationContext at startup and use Post() to marshal the callback
-    // back to the main thread where H.NotifyIcon expects to be called.
-    // The timer runs in one-shot mode (period = Timeout.Infinite); after each poll,
-    // AdaptivePoll reschedules it with Change() to the next computed interval.
+    // System.Threading.Timer fires on a thread-pool thread in one-shot mode
+    // (period = Timeout.Infinite); after each wake, OnWake reschedules it with
+    // Change() to the next computed interval.  On Windows 10/11, Shell_NotifyIcon
+    // works from any thread, so no SynchronizationContext marshalling is needed.
     private Timer? _refreshTimer;
-    private SynchronizationContext? _syncContext;
     private UsageData? _lastUsageData;
     private PopupMenu? _contextMenu;
     private PopupMenu? _weeklyContextMenu;
@@ -72,8 +70,6 @@ public class App
 
     public async void Start()
     {
-        _syncContext = SynchronizationContext.Current;
-
         // Initialize localization (saved preference or auto-detect)
         var savedLang = StartupHelper.GetSavedLanguage();
         LocalizationService.Initialize(savedLang);
@@ -82,13 +78,10 @@ public class App
         CreateTrayIcon();
 
         // Set up wake timer (one-shot; OnWake reschedules after each cycle)
-        _refreshTimer = new Timer(_ =>
+        _refreshTimer = new Timer(async _ =>
         {
-            _syncContext?.Post(async _ =>
-            {
-                try { await OnWake(); }
-                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Wake error: {ex.Message}"); }
-            }, null);
+            try { await OnWake(); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"Wake error: {ex.Message}"); }
         }, null, Timeout.Infinite, Timeout.Infinite);
 
         // Initial data fetch
@@ -195,6 +188,7 @@ public class App
     private void ScheduleWake(int seconds)
     {
         _refreshTimer!.Change(seconds * 1000, Timeout.Infinite);
+        RefreshTooltipTiming();
         System.Diagnostics.Debug.WriteLine($"Next wake in {seconds}s (retry={_isRetryWake})");
     }
 
@@ -608,6 +602,42 @@ public class App
         _trayIcon!.ContextMenu = _contextMenu;
     }
 
+    private void RefreshTooltipTiming()
+    {
+        if (_trayIcon == null || _weeklyTrayIcon == null) return;
+
+        if (_lastUsageData == null)
+        {
+            _trayIcon.UpdateToolTip("Claude Session - Loading...");
+            _weeklyTrayIcon.UpdateToolTip("Claude Weekly - Loading...");
+            return;
+        }
+
+        var usage = _lastUsageData;
+        var sessionPct = usage.FiveHour?.UtilizationPercent ?? 0;
+        var weeklyPct = usage.SevenDay?.UtilizationPercent ?? 0;
+        var sessionReset = usage.FiveHour?.TimeUntilReset ?? "N/A";
+        var weeklyReset = usage.SevenDay?.TimeUntilReset ?? "N/A";
+
+        _trayIcon.UpdateToolTip($"Claude Session\n{LocalizationService.T("tooltip_session", sessionPct, sessionReset)}");
+        _weeklyTrayIcon.UpdateToolTip($"Claude Weekly\n{LocalizationService.T("tooltip_weekly", weeklyPct, weeklyReset)}");
+
+        if (_sonnetTrayIcon != null)
+        {
+            var sonnetPct = usage.Sonnet?.UtilizationPercent ?? 0;
+            var sonnetReset = usage.Sonnet?.TimeUntilReset ?? "N/A";
+            _sonnetTrayIcon.UpdateToolTip($"Claude Sonnet\n{LocalizationService.T("tooltip_session", sonnetPct, sonnetReset)}");
+        }
+
+        if (_overageTrayIcon != null && usage.ExtraUsage != null)
+        {
+            var overagePct = usage.ExtraUsage.UtilizationPercent;
+            var overageUsed = usage.ExtraUsage.UsedDollars;
+            var overageLimit = usage.ExtraUsage.LimitDollars;
+            _overageTrayIcon.UpdateToolTip($"Claude Overage\n{overagePct}% | ${overageUsed:F2} / ${overageLimit:F2}");
+        }
+    }
+
     private void HandleFetchError(string localizationKey)
     {
         UpdateTrayIconError();
@@ -630,33 +660,13 @@ public class App
         }
 
         _lastUsageData = usage;
+        _lastSuccessfulRefresh = DateTimeOffset.UtcNow;
 
         UpdateTrayIcon();
 
-        // Update tooltips
-        var sessionPct = usage.FiveHour?.UtilizationPercent ?? 0;
-        var weeklyPct = usage.SevenDay?.UtilizationPercent ?? 0;
-        var sessionReset = usage.FiveHour?.TimeUntilReset ?? "N/A";
-        var weeklyReset = usage.SevenDay?.TimeUntilReset ?? "N/A";
-
-        _trayIcon!.UpdateToolTip($"Claude Session\n{LocalizationService.T("tooltip_session", sessionPct, sessionReset)}");
-        _weeklyTrayIcon!.UpdateToolTip($"Claude Weekly\n{LocalizationService.T("tooltip_weekly", weeklyPct, weeklyReset)}");
-
-        // Update sonnet and overage tooltips if visible
-        if (_sonnetTrayIcon != null)
-        {
-            var sonnetPct = usage.Sonnet?.UtilizationPercent ?? 0;
-            var sonnetReset = usage.Sonnet?.TimeUntilReset ?? "N/A";
-            _sonnetTrayIcon.UpdateToolTip($"Claude Sonnet\n{LocalizationService.T("tooltip_session", sonnetPct, sonnetReset)}");
-        }
-
-        if (_overageTrayIcon != null && usage.ExtraUsage != null)
-        {
-            var overagePct = usage.ExtraUsage.UtilizationPercent;
-            var overageUsed = usage.ExtraUsage.UsedDollars;
-            var overageLimit = usage.ExtraUsage.LimitDollars;
-            _overageTrayIcon.UpdateToolTip($"Claude Overage\n{overagePct}% | ${overageUsed:F2} / ${overageLimit:F2}");
-        }
+        // Tooltips are updated by ScheduleWake → RefreshTooltipTiming after caller reschedules.
+        // For manual refresh (no ScheduleWake follows), update now.
+        RefreshTooltipTiming();
 
         return true;
     }
