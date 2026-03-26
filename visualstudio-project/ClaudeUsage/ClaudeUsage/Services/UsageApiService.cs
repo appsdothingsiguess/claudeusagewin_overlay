@@ -103,7 +103,7 @@ public class UsageApiService
                 {
                     var json = await response.Content.ReadAsStringAsync();
                     System.Diagnostics.Debug.WriteLine($"API Response: {json}");
-                    return JsonSerializer.Deserialize<UsageData>(json);
+                    return JsonSerializer.Deserialize(json, AppJsonContext.Default.UsageData);
                 }
 
                 var statusCode = (int)response.StatusCode;

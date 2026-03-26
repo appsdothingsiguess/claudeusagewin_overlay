@@ -135,7 +135,7 @@ public class CredentialService
             }
 
             var json = await File.ReadAllTextAsync(credentialsPath);
-            var credentials = JsonSerializer.Deserialize<CredentialsFile>(json);
+            var credentials = JsonSerializer.Deserialize(json, AppJsonContext.Default.CredentialsFile);
 
             if (credentials?.ClaudeAiOauth == null)
             {
@@ -200,7 +200,7 @@ public class CredentialService
             var jsonResponse = await response.Content.ReadAsStringAsync();
             System.Diagnostics.Debug.WriteLine($"Token refresh response: {jsonResponse}");
 
-            var tokenResponse = JsonSerializer.Deserialize<TokenRefreshResponse>(jsonResponse);
+            var tokenResponse = JsonSerializer.Deserialize(jsonResponse, AppJsonContext.Default.TokenRefreshResponse);
 
             if (tokenResponse == null)
             {
@@ -226,10 +226,7 @@ public class CredentialService
     {
         try
         {
-            var json = JsonSerializer.Serialize(credentials, new JsonSerializerOptions
-            {
-                WriteIndented = false
-            });
+            var json = JsonSerializer.Serialize(credentials, AppJsonContext.Default.CredentialsFile);
             await File.WriteAllTextAsync(credentialsPath, json);
             System.Diagnostics.Debug.WriteLine($"Credentials saved successfully to {credentialsPath}");
         }

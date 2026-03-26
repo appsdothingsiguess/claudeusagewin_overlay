@@ -11,9 +11,8 @@
     <Product>Claude Usage</Product>
     <Description>Windows system tray app for monitoring Claude Code usage limits (native Windows and WSL)</Description>
 
-    <!-- Single-file executable configuration -->
-    <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>false</SelfContained>
+    <!-- Native AOT compilation -->
+    <PublishAot>true</PublishAot>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
 

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
+using ClaudeUsage.Models;
 
 namespace ClaudeUsage.Services;
 
@@ -135,7 +136,7 @@ public static class LocalizationService
 
             using var reader = new StreamReader(stream);
             var json = reader.ReadToEnd();
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? new();
+            return JsonSerializer.Deserialize(json, AppJsonContext.Default.DictionaryStringString) ?? new();
         }
         catch (Exception ex)
         {

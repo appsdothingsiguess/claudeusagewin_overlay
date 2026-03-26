@@ -1,6 +1,14 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
+using ClaudeUsage.Services;
 
 namespace ClaudeUsage.Models;
+
+[JsonSerializable(typeof(UsageData))]
+[JsonSerializable(typeof(CredentialsFile))]
+[JsonSerializable(typeof(TokenRefreshResponse))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
+public partial class AppJsonContext : JsonSerializerContext;
 
 public class UsageData
 {
