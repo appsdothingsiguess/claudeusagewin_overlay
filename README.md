@@ -51,9 +51,17 @@ No build tools required for end users.
 
 - **Tray → Toggle HUD overlay** — show or hide the small overlay.
 - **Left-click** the overlay — toggle visibility (click vs. drag to move).
-- **Right-click** the overlay — hide until you turn it on again from the tray.
+- **Right-click** the overlay — opens the **same** menu as the session tray icon (Refresh, Toggle HUD, Show Details, Launch at Login, Language, Exit).
 
-The overlay may **briefly flicker** when you change tray settings or the shell refreshes (e.g. taskbar menus). That is a known limitation of keeping a small topmost window stable next to the taskbar.
+#### Disclaimer: HUD overlay quirks (help wanted)
+
+The HUD is a tiny always-on-top WPF window sitting next to the Windows shell (taskbar, Explorer, notification area). Depending on timing and OS version, you may still see any of the following:
+
+- **Brief flicker** when tray settings change or the shell refreshes  
+- The overlay **vanishing for a moment** and then coming back  
+- The HUD **drawing behind the taskbar** until the next topmost “re-pin”
+
+The app mitigates this with debounced `SetWindowPos` (`HWND_TOPMOST`) and extra reasserts on load, but **this is not fully solved**. If you can improve stability (smooth z-order, zero flash, no transient hide) without breaking tray menus or focus behavior, **pull requests are very welcome**—open an issue or send a PR.
 
 ### Tray icon not visible?
 
@@ -82,6 +90,15 @@ cd claudeusagewin
 ```
 
 Or use your own fork URL after you fork on GitHub.
+
+To **track the original project** (optional), add it as `upstream` and fetch when you want to merge or compare:
+
+```bash
+git remote add upstream https://github.com/sr-kai/claudeusagewin.git   # skip if you already have upstream
+git fetch upstream
+```
+
+If `upstream` already exists, use `git remote set-url upstream https://github.com/sr-kai/claudeusagewin.git` to point it at the canonical repo.
 
 ### Build (CLI)
 

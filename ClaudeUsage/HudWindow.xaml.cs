@@ -11,7 +11,7 @@ namespace ClaudeUsage;
 
 /// <summary>
 /// Borderless always-on-top overlay showing session and weekly usage percentages.
-/// Left-click: toggles visibility (or click vs. drag to move). Right-click: hides overlay until toggled from tray.
+/// Left-click: toggles visibility (or click vs. drag to move). Right-click: same native tray menu as the session icon.
 /// </summary>
 public partial class HudWindow : Window
 {
@@ -54,18 +54,30 @@ public partial class HudWindow : Window
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
-    public HudWindow(HudSettings settings)
+    /// <summary>Invoked with screen coordinates when the user right-clicks; shows the same native menu as the tray.</summary>
+    private readonly Action<double, double>? _showTrayContextMenuAtScreen;
+
+    public HudWindow(HudSettings settings, Action<double, double>? showTrayContextMenuAtScreen = null)
     {
         _settings = settings;
+        _showTrayContextMenuAtScreen = showTrayContextMenuAtScreen;
         InitializeComponent();
         // Tray / taskbar menus steal topmost z-order; reassert so the HUD stays above the shell.
-        _presentationTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+        _presentationTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(750) };
         _presentationTimer.Tick += (_, _) => MaintainPresentation();
-        Loaded += (_, _) => _presentationTimer.Start();
+        Loaded += OnHudLoaded;
         Closed += (_, _) => _presentationTimer.Stop();
     }
 
-    /// <summary>Allows the window to close cleanly on app shutdown (otherwise right-click only hides).</summary>
+    private void OnHudLoaded(object sender, RoutedEventArgs e)
+    {
+        _presentationTimer.Start();
+        var hwnd = new WindowInteropHelper(this).EnsureHandle();
+        if (hwnd != IntPtr.Zero)
+            ReassertTopmost(hwnd);
+    }
+
+    /// <summary>Allows the window to close cleanly on app shutdown (otherwise <see cref="OnClosing"/> is canceled).</summary>
     public void AllowClose()
     {
         _allowClose = true;
@@ -105,6 +117,7 @@ public partial class HudWindow : Window
         var exStyle = GetWindowLongPtr(hwnd, GwlExStyle);
         var newStyle = new IntPtr(exStyle.ToInt64() | WsExNoActivate | WsExToolWindow);
         SetWindowLongPtr(hwnd, GwlExStyle, newStyle);
+        ReassertTopmost(hwnd);
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -116,13 +129,6 @@ public partial class HudWindow : Window
             e.Cancel = true;
         }
         base.OnClosing(e);
-    }
-
-    private void HideAndPersistClosed()
-    {
-        Visibility = Visibility.Hidden;
-        _settings.Visible = false;
-        HudSettingsStore.Save(_settings);
     }
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -154,7 +160,18 @@ public partial class HudWindow : Window
     private void Window_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
-        HideAndPersistClosed();
+        if (_showTrayContextMenuAtScreen == null) return;
+        var pt = PointToScreen(e.GetPosition(this));
+        _showTrayContextMenuAtScreen(pt.X, pt.Y);
+    }
+
+    /// <summary>Re-pin above the shell before showing a native popup (taskbar also uses topmost).</summary>
+    public void ReassertTopmostForShell()
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero) return;
+        ReassertTopmost(hwnd);
+        _lastTopmostUtc = DateTimeOffset.UtcNow;
     }
 
     /// <summary>Visibility toggle (hide/show) when the user clicks without dragging.</summary>
@@ -204,7 +221,7 @@ public partial class HudWindow : Window
 
         // Avoid SetWindowPos every tick + on every usage refresh — that caused a visible flash after tray menu actions.
         var now = DateTimeOffset.UtcNow;
-        if (now - _lastTopmostUtc < TimeSpan.FromSeconds(1.5)) return;
+        if (now - _lastTopmostUtc < TimeSpan.FromMilliseconds(750)) return;
         _lastTopmostUtc = now;
         ReassertTopmost(hwnd);
     }

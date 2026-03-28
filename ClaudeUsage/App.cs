@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Media;
 using ClaudeUsage.Helpers;
 using ClaudeUsage.Models;
@@ -16,6 +17,9 @@ public class App
 
     [DllImport("user32.dll")]
     private static extern bool DestroyIcon(IntPtr hIcon);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     private TrayIconWithContextMenu? _trayIcon;
     private TrayIconWithContextMenu? _weeklyTrayIcon;
@@ -123,7 +127,7 @@ public class App
         try
         {
             var settings = HudSettingsStore.Load();
-            _hudWindow = new HudWindow(settings);
+            _hudWindow = new HudWindow(settings, ShowTrayContextMenuFromHud);
             _hudWindow.ApplyStartupPosition();
             if (settings.Visible)
                 _hudWindow.Show();
@@ -135,6 +139,33 @@ public class App
         {
             System.Diagnostics.Debug.WriteLine($"HUD init failed: {ex.Message}");
             _hudWindow = null;
+        }
+    }
+
+    /// <summary>Shows the session tray’s native popup menu at the pointer (HUD right-click).</summary>
+    private void ShowTrayContextMenuFromHud(double screenX, double screenY)
+    {
+        var hud = _hudWindow;
+        var menu = _contextMenu;
+        if (menu == null || hud == null) return;
+        try
+        {
+            void ShowMenu()
+            {
+                var hwnd = new WindowInteropHelper(hud).EnsureHandle();
+                SetForegroundWindow(hwnd);
+                hud.ReassertTopmostForShell();
+                menu.Show(hwnd, (int)Math.Round(screenX), (int)Math.Round(screenY));
+            }
+
+            if (hud.Dispatcher.CheckAccess())
+                ShowMenu();
+            else
+                hud.Dispatcher.Invoke(ShowMenu);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"HUD tray menu: {ex}");
         }
     }
 
