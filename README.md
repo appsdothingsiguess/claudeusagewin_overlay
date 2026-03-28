@@ -19,7 +19,7 @@ Lightweight, no installer required. Works with **Claude Code for Windows** or **
 
 *Screenshot: tray icons with hover tooltip (session %) and the optional **HUD** strip (session + weekly %) beside the system tray.*
 
-![Tray tooltip and HUD overlay](image.png)
+![Tray tooltip and HUD overlay](readme-hud-screenshot.png)
 
 ## Features
 
